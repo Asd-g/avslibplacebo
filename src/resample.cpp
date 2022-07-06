@@ -17,6 +17,7 @@ struct resample
     int subh;
     float shift_w;
     float shift_h;
+    int cplace;
 };
 
 int resample_do_plane(priv* p, resample* data, const int w, const int h, const float sx, const float sy)
@@ -285,6 +286,8 @@ AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
     }
     else
     {
+        avs_prop_set_int(fi->env, avs_get_frame_props_rw(fi->env, dst), "_ChromaLocation", d->cplace, 0);
+
         avs_release_video_frame(src);
 
         return dst;
@@ -496,8 +499,8 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 
         if (!avs_is_rgb(&fi->vi) && !avs_is_y(&fi->vi))
         {
-            const int cplace{ (avs_defined(avs_array_elt(args, CPLACE))) ? avs_as_int(avs_array_elt(args, CPLACE)) : 0 };
-            if (cplace < 0 || cplace > 2)
+            params->cplace = (avs_defined(avs_array_elt(args, CPLACE))) ? avs_as_int(avs_array_elt(args, CPLACE)) : 0;
+            if (params->cplace < 0 || params->cplace > 2)
                 v = avs_new_value_error("libplacebo_Resample: cplace must be between 0 and 2.");
 
             if (!avs_defined(v))
@@ -505,8 +508,8 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
                 params->subw = (1 << avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U));
                 params->subh = (1 << avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U));
 
-                params->shift_w = (cplace == 0 || cplace == 2) ? (0.5f * (1.0f - static_cast<float>(w) / fi->vi.width)) / params->subw : 0.0f;
-                params->shift_h = (cplace == 2) ? (0.5f * (1.0f - static_cast<float>(h) / fi->vi.height)) / params->subh : 0.0f;
+                params->shift_w = (params->cplace == 0 || params->cplace == 2) ? (0.5f * (1.0f - static_cast<float>(w) / fi->vi.width)) / params->subw : 0.0f;
+                params->shift_h = (params->cplace == 2) ? (0.5f * (1.0f - static_cast<float>(h) / fi->vi.height)) / params->subh : 0.0f;
             }
         }
         else
