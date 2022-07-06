@@ -14,8 +14,8 @@ extern "C" {
 #include <libplacebo/vulkan.h>
 }
 
-std::unique_ptr<struct priv> avslibplacebo_init(VkPhysicalDevice device);
-void avslibplacebo_uninit(std::unique_ptr<struct priv> p);
+std::unique_ptr<struct priv> avs_libplacebo_init(VkPhysicalDevice device);
+void avs_libplacebo_uninit(std::unique_ptr<struct priv> p);
 
 struct format
 {
@@ -53,4 +53,5 @@ struct priv
     pl_tex tex_out[MAX_PLANES];
 };
 
-AVS_Value AVSC_CC Create_libplDeband(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
+AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
+AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
