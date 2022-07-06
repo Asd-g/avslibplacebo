@@ -234,7 +234,7 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     Default: 6.5.
 
 - trc\
-    The colorspace's transfer function (gamma / EOTF):
+    The colorspace's transfer function (gamma / EOTF) to use for linearizing:
     0. UNKNOWN
 
     Standard dynamic range:
