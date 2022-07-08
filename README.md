@@ -14,6 +14,7 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 
 [Debanding](#debanding)\
 [Resampling](#resampling)\
+[Shader](#shader)
 
 ### Debanding
 
@@ -235,26 +236,26 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 
 - trc\
     The colorspace's transfer function (gamma / EOTF) to use for linearizing:
-    0. UNKNOWN
+    0: UNKNOWN
 
-    Standard dynamic range:
-    1. BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))
-    2. SRGB (IEC 61966-2-4 sRGB (CRT emulation))
-    3. LINEAR (Linear light content)
-    4. GAMMA18 (Pure power gamma 1.8)
-    5. GAMMA20 (Pure power gamma 2.0)
-    6. GAMMA22 (Pure power gamma 2.2)
-    7. GAMMA24 (Pure power gamma 2.4)
-    8. GAMMA26 (Pure power gamma 2.6)
-    9. GAMMA28 (Pure power gamma 2.8)
-    10. PRO_PHOTO (ProPhoto RGB (ROMM))
+    Standard dynamic range:\
+    1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))\
+    2: SRGB (IEC 61966-2-4 sRGB (CRT emulation))\
+    3: LINEAR (Linear light content)\
+    4: GAMMA18 (Pure power gamma 1.8)\
+    5: GAMMA20 (Pure power gamma 2.0)\
+    6: GAMMA22 (Pure power gamma 2.2)\
+    7: GAMMA24 (Pure power gamma 2.4)\
+    8: GAMMA26 (Pure power gamma 2.6)\
+    9: GAMMA28 (Pure power gamma 2.8)\
+    10: PRO_PHOTO (ProPhoto RGB (ROMM))
 
-    High dynamic range:
-    11. PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)
-    12. HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)
-    13. V_LOG (Panasonic V-Log (VARICAM))
-    14. S_LOG1 (Sony S-Log1)
-    15. S_LOG2 (Sony S-Log2)
+    High dynamic range:\
+    11: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
+    12: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
+    13: V_LOG (Panasonic V-Log (VARICAM))\
+    14: S_LOG1 (Sony S-Log1)\
+    15: S_LOG2 (Sony S-Log2)
 
     Default: 1.
 
@@ -264,6 +265,183 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     1: center\
     2: topleft\
     Default: 0.
+
+- device\
+    Sets target Vulkan device.\
+    Use list_device to get the index of the available devices.\
+    By default the default device is selected.
+
+- list_device\
+    Whether to draw the devices list on the frame.\
+    Default: False.
+
+[Back to filters](#filters)
+
+### Shader
+
+#### Usage:
+
+```
+libplacebo_Shader(clip input, string shader, int "width", int "height", int "chroma_loc", int "matrix", int "trc",  string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "antiring", float "lut_entries", float "cutoff", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", int "device", bool "list_device")
+```
+
+#### Parameters:
+
+- input\
+    A clip to process.\
+    It must be YUV 16-bit planar format.\
+    The output is YUV444P16. This is necessitated by the fundamental design of libplacebo/mpv’s custom shader feature: the shaders aren’t meant (nor written) to be run by themselves, but to be injected at arbitrary points into a [rendering pipeline](https://github.com/mpv-player/mpv/wiki/Video-output---shader-stage-diagram) with RGB output.\
+    As such, the user needs to specify the output frame properties, and libplacebo will produce a conforming image, only running the supplied shader if the texture it hooks into is actually rendered. For example, if a shader hooks into the LINEAR texture, it will only be executed when `linearize = true`.
+
+- shader\
+    Path to the shader file.
+
+- width\
+    The width of the output.\
+    Default: Source width.
+
+- height\
+    The height of the output.\
+    Default: Source height.
+
+- chroma_loc\
+    Chroma location to derive chroma shift from.\
+    0: UNKNOWN\
+    1: LEFT\
+    2: CENTER\
+    3: TOP_LEFT\
+    4: TOP_CENTER\
+    5: BOTTOM_LEFT\
+    6: BOTTOM_CENTER\
+    Default: 1.
+
+- matrix\
+    0: UNKNOWN
+    1: BT_601 (ITU-R Rec. BT.601 (SD))\
+    2: BT_709 (ITU-R Rec. BT.709 (HD))\
+    3: SMPTE_240M (SMPTE-240M)\
+    4: BT_2020_NC (ITU-R Rec. BT.2020 (non-constant luminance))\
+    5: BT_2020_C (ITU-R Rec. BT.2020 (constant luminance))\
+    6: BT_2100_PQ (ITU-R Rec. BT.2100 ICtCp PQ variant)\
+    7: BT_2100_HLG (ITU-R Rec. BT.2100 ICtCp HLG variant)\
+    8: YCGCO (YCgCo (derived from RGB))
+    Default: 2.
+
+- trc\
+    The colorspace's transfer function (gamma / EOTF) to use for linearizing:
+    0: UNKNOWN
+
+    Standard dynamic range:\
+    1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))\
+    2: SRGB (IEC 61966-2-4 sRGB (CRT emulation))\
+    3: LINEAR (Linear light content)\
+    4: GAMMA18 (Pure power gamma 1.8)\
+    5: GAMMA20 (Pure power gamma 2.0)\
+    6: GAMMA22 (Pure power gamma 2.2)\
+    7: GAMMA24 (Pure power gamma 2.4)\
+    8: GAMMA26 (Pure power gamma 2.6)\
+    9: GAMMA28 (Pure power gamma 2.8)\
+    10: PRO_PHOTO (ProPhoto RGB (ROMM))
+
+    High dynamic range:\
+    11: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
+    12: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
+    13: V_LOG (Panasonic V-Log (VARICAM))\
+    14: S_LOG1 (Sony S-Log1)\
+    15: S_LOG2 (Sony S-Log2)
+
+    Default: 1.
+
+- filter
+    The used filter function.
+    * spline16 (2 taps)
+    * spline36 (3 taps)
+    * spline64 (4 taps)
+    * box (AKA nearest)
+    * triangle (AKA bilinear)
+    * gaussian
+
+    Sinc family (all configured to 3 taps):
+    * sinc (unwindowed)
+    * lanczos (sinc-sinc)
+    * ginseng (sinc-jinc)
+    * ewa_jinc (unwindowed)
+    * ewa_lanczos (jinc-jinc)
+    * ewa_ginseng (jinc-sinc)
+    * ewa_hann (jinc-hann)
+    * haasnsoft (blurred ewa_hann)
+
+    Spline family:
+    * bicubic
+    * catmull_rom
+    * mitchell
+    * robidoux
+    * robidouxsharp
+    * ewa_robidoux
+    * ewa_robidouxsharp
+
+    Default: "ewa_lanczos"
+
+- radius\
+    It may be used to adjust the function's radius.\
+    Defaults to the the radius needed to represent a single filter lobe (tap).\
+    If the function is not resizable, this doesn't have effect.
+
+- clamp\
+    Represents a clamping coefficient for negative weights:
+    0.0: No clamping.\
+    1.0: Full clamping, i.e. all negative weights will be clamped to 0.\
+    Default: 0.0.
+
+- taper\
+    Additional taper coefficient.\
+    This essentially flattens the function's center.\
+    The values within `[-taper, taper]` will return 1.0, with the actual function being squished into the remainder of `[taper, radius]`.\
+    Default: 0.0.
+
+- blur\
+    Additional blur coefficient.\
+    This effectively stretches the kernel, without changing the effective radius of the filter radius.\
+    Values significantly below 1.0 may seriously degrade the visual output, and should be used with care.\
+    Default: 0.0.
+
+- param1, param2\
+    These may be used to adjust the function.\
+    Defaults to the function's preferred defaults. if the relevant setting is not tunable, they are ignored entirely.
+
+- antiring\
+    Antiringing strength.\
+    A value of 0.0 disables antiringing, and a value of 1.0 enables full-strength antiringing.\
+    Only relevant for separated/orthogonal filters.\
+    Default: 0.0.
+
+- lut_entries\
+    The precision of the LUT.\
+    A value of 64 should be fine for most practical purposes, but higher or lower values may be justified depending on the use case.\
+    Must be greater than 0.\
+    Default: 64.
+
+- cutoff\
+    As a micro-optimization, all samples below this cutoff value will be ignored when updating the cutoff radius.\
+    Setting it to a value of 0.0 disables this optimization.\
+    Only relevant for polar filters.\
+    Default: 0.0.
+
+- sigmoidize, linearize\
+    Whether to linearize/sigmoidize before scaling.\
+    Only relevant for RGB formats.\
+    When sigmodizing, `linearize` should be `true`\
+    Default: True.
+
+- sigmoid_center\
+    The center (bias) of the sigmoid curve.\
+    Must be between 0.0 and 1.0.\
+    Default: 0.75.
+
+- sigmoid_slope\
+    The slope (steepness) of the sigmoid curve.\
+    Must be between 1.0 and 20.0.\
+    Default: 6.5.
 
 - device\
     Sets target Vulkan device.\

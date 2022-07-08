@@ -159,7 +159,7 @@ AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
             {
                 switch (reconf)
                 {
-                    case -1: ErrorText = "libplacebo_Deband: failed configuring filter : no good texture format!"; break;
+                    case -1: ErrorText = "libplacebo_Deband: failed configuring filter: no good texture format!"; break;
                     default: ErrorText = "libplacebo_Deband: failed creating GPU textures!";
                 }
             }

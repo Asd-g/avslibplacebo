@@ -269,7 +269,7 @@ AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
         {
             switch (reconf)
             {
-                case -1: ErrorText = "libplacebo_Resample: failed configuring filter : no good texture format!"; break;
+                case -1: ErrorText = "libplacebo_Resample: failed configuring filter: no good texture format!"; break;
                 default: ErrorText = "libplacebo_Resample: failed creating GPU textures!";
             }
         }
@@ -455,7 +455,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
                 }
             }
             else
-                params->linear = false;
+                params->linear = 0;
         }
     }
     if (!avs_defined(v))
