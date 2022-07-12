@@ -1,4 +1,8 @@
+#include <mutex>
+
 #include "avs_libplacebo.h"
+
+static std::mutex mtx;
 
 struct deband
 {
@@ -12,87 +16,84 @@ struct deband
     std::unique_ptr<char[]> msg;
 };
 
-bool deband_do_plane(priv* p, deband* data) noexcept
+static bool deband_do_plane(priv& p, deband& data) noexcept
 {
-    deband* d{ data };
+    deband* d{ &data };
 
-    pl_shader sh{ pl_dispatch_begin(p->dp) };
+    pl_shader sh{ pl_dispatch_begin(p.dp) };
 
     pl_shader_params sh_p{};
-    sh_p.gpu = p->gpu;
+    sh_p.gpu = p.gpu;
     sh_p.index = d->frame_index++;
 
     pl_shader_reset(sh, &sh_p);
 
     pl_sample_src src{};
-    src.tex = p->tex_in[0];
+    src.tex = p.tex_in[0];
 
     pl_shader_deband(sh, &src, d->deband_params.get());
 
     if (d->dither)
-        pl_shader_dither(sh, p->tex_out[0]->params.format->component_depth[0], &p->dither_state, d->dither_params.get());
+        pl_shader_dither(sh, p.tex_out[0]->params.format->component_depth[0], &p.dither_state, d->dither_params.get());
 
     pl_dispatch_params d_p{};
-    d_p.target = p->tex_out[0];
+    d_p.target = p.tex_out[0];
     d_p.shader = &sh;
 
-    return pl_dispatch_finish(p->dp, &d_p);
+    return pl_dispatch_finish(p.dp, &d_p);
 }
 
-int deband_reconfig(priv* priv_, const pl_plane_data* data, AVS_VideoFrame* dst, const int planeIdx)
+static int deband_reconfig(priv& priv_, const pl_plane_data& data, AVS_VideoFrame* dst, const int planeIdx)
 {
-    priv* p{ priv_ };
+    priv* p{ &priv_ };
 
-    pl_fmt fmt{ pl_plane_find_fmt(p->gpu, nullptr, data) };
+    pl_fmt fmt{ pl_plane_find_fmt(p->gpu, nullptr, &data) };
     if (!fmt)
         return -1;
 
-    bool ok{ true };
     pl_tex_params t_r{};
-    t_r.w = data->width;
-    t_r.h = data->height;
+    t_r.w = data.width;
+    t_r.h = data.height;
     t_r.format = fmt;
     t_r.sampleable = true;
     t_r.host_writable = true;
 
-    ok &= pl_tex_recreate(p->gpu, &p->tex_in[0], &t_r);
+    if (pl_tex_recreate(p->gpu, &p->tex_in[0], &t_r))
+    {
+        pl_tex_params t_r1{};
+        t_r1.w = avs_get_row_size_p(dst, planeIdx) / data.pixel_stride;
+        t_r1.h = avs_get_height_p(dst, planeIdx);
+        t_r1.format = fmt;
+        t_r1.renderable = true;
+        t_r1.host_readable = true;
 
-    pl_tex_params t_r1{};
-    t_r1.w = avs_get_row_size_p(dst, planeIdx) / data->pixel_stride;
-    t_r1.h = avs_get_height_p(dst, planeIdx);
-    t_r1.format = fmt;
-    t_r1.renderable = true;
-    t_r1.host_readable = true;
-
-    ok &= pl_tex_recreate(p->gpu, &p->tex_out[0], &t_r1);
-
-    if (!ok)
+        if (!pl_tex_recreate(p->gpu, &p->tex_out[0], &t_r1))
+            return -2;
+    }
+    else
         return -2;
 
     return 0;
 }
 
-int deband_filter(priv* priv_, AVS_VideoFrame* dst, const pl_plane_data* data, deband* d, int planeIdx)
+static int deband_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& data, deband& d, const int planeIdx)
 {
-    priv* p{ priv_ };
+    priv* p{ &priv_ };
 
     pl_fmt in_fmt{ p->tex_in[0]->params.format };
     pl_fmt out_fmt{ p->tex_out[0]->params.format };
 
     // Upload planes
-    bool ok{ true };
     pl_tex_transfer_params ttr{};
     ttr.tex = p->tex_in[0];
-    ttr.row_pitch = data->row_stride;
-    ttr.ptr = const_cast<void*>(data->pixels);
+    ttr.row_pitch = data.row_stride;
+    ttr.ptr = const_cast<void*>(data.pixels);
 
-    ok &= pl_tex_upload(p->gpu, &ttr);
-
-    if (!ok)
+    if (!pl_tex_upload(p->gpu, &ttr))
         return -1;
 
     // Process plane
-    if (!deband_do_plane(p, d))
+    if (!deband_do_plane(*p, d))
         return -2;
 
     pl_tex_transfer_params ttr1{};
@@ -107,7 +108,7 @@ int deband_filter(priv* priv_, AVS_VideoFrame* dst, const pl_plane_data* data, d
     return 0;
 }
 
-AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
+static AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
 {
     deband* d{ reinterpret_cast<deband*>(fi->user_data) };
 
@@ -141,26 +142,30 @@ AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
             plane.component_pad[0] = 0;
             plane.component_map[0] = 0;
 
-            const int reconf{ deband_reconfig(d->vf.get(), &plane, dst, planes[i]) };
-            if (reconf == 0)
             {
-                const int filt{ deband_filter(d->vf.get(), dst, &plane, d, planes[i]) };
-                if (filt < 0)
+                std::lock_guard<std::mutex> lck(mtx);
+
+                const int reconf{ deband_reconfig(*d->vf.get(), plane, dst, planes[i]) };
+                if (reconf == 0)
                 {
-                    switch (filt)
+                    const int filt{ deband_filter(*d->vf.get(), dst, plane, *d, planes[i]) };
+                    if (filt < 0)
                     {
-                        case -1: ErrorText = "libplacebo_Deband: failed uploading data to the GPU!"; break;
-                        case -2: ErrorText = "libplacebo_Deband: failed processing planes!"; break;
-                        default: ErrorText = "libplacebo_Deband: failed downloading data from the GPU!";
+                        switch (filt)
+                        {
+                            case -1: ErrorText = "libplacebo_Deband: failed uploading data to the GPU!"; break;
+                            case -2: ErrorText = "libplacebo_Deband: failed processing planes!"; break;
+                            default: ErrorText = "libplacebo_Deband: failed downloading data from the GPU!";
+                        }
                     }
                 }
-            }
-            else
-            {
-                switch (reconf)
+                else
                 {
-                    case -1: ErrorText = "libplacebo_Deband: failed configuring filter: no good texture format!"; break;
-                    default: ErrorText = "libplacebo_Deband: failed creating GPU textures!";
+                    switch (reconf)
+                    {
+                        case -1: ErrorText = "libplacebo_Deband: failed configuring filter: no good texture format!"; break;
+                        default: ErrorText = "libplacebo_Deband: failed creating GPU textures!";
+                    }
                 }
             }
         }
@@ -177,13 +182,17 @@ AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
     }
     else
     {
+        if (avs_num_components(&fi->vi) > 3)
+            avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, AVS_PLANAR_A), avs_get_pitch_p(dst, AVS_PLANAR_A), avs_get_read_ptr_p(src, AVS_PLANAR_A), avs_get_pitch_p(src, AVS_PLANAR_A),
+                avs_get_row_size_p(src, AVS_PLANAR_A), avs_get_height_p(src, AVS_PLANAR_A));
+
         avs_release_video_frame(src);
 
         return dst;
     }
 }
 
-void AVSC_CC free_deband(AVS_FilterInfo* fi)
+static void AVSC_CC free_deband(AVS_FilterInfo* fi)
 {
     deband* d{ reinterpret_cast<deband*>(fi->user_data) };
 
@@ -193,22 +202,20 @@ void AVSC_CC free_deband(AVS_FilterInfo* fi)
     delete d;
 }
 
-int AVSC_CC deband_set_cache_hints(AVS_FilterInfo* fi, int cachehints, int frame_range)
+static int AVSC_CC deband_set_cache_hints(AVS_FilterInfo* fi, int cachehints, int frame_range)
 {
     return cachehints == AVS_CACHE_GET_MTMODE ? 2 : 0;
 }
 
 AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum { CLIP, ITERATIONS, THRESHOLD, RADIUS, GRAIN, DITHER, LUT_SIZE, TEMPORAL, PLANES, DEVICE, LIST_DEVICE };
+    enum { Clip, Iterations, Threshold, Radius, Grain, Dither, Lut_size, Temporal, Planes, Device, List_device };
 
     AVS_FilterInfo* fi;
-
-    AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, CLIP), 1) };
+    AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
+    AVS_Value v{ avs_void };
 
     deband* params{ new deband() };
-
-    AVS_Value v{ avs_void };
 
     if (!avs_is_planar(&fi->vi))
         v = avs_new_value_error("libplacebo_Deband: clip must be in planar format.");
@@ -216,8 +223,8 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
         v = avs_new_value_error("libplacebo_Deband: bit depth must be 8, 16 or 32-bit.");
     if (!avs_defined(v))
     {
-        const int device{ avs_defined(avs_array_elt(args, DEVICE)) ? avs_as_int(avs_array_elt(args, DEVICE)) : -1 };
-        params->list_device = avs_defined(avs_array_elt(args, LIST_DEVICE)) ? avs_as_bool(avs_array_elt(args, LIST_DEVICE)) : 0;
+        const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
+        params->list_device = avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0;
 
         std::vector<VkPhysicalDevice> devices{};
         VkInstance inst{};
@@ -243,7 +250,7 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 
             if (!avs_defined(v))
             {
-                if (device < -1 || device > dev_count - 1)
+                if (device < -1 || device > static_cast<int>(dev_count) - 1)
                 {
                     const std::string err_{ (std::string("libplacebo_Deband: device must be between -1 and ") + std::to_string(dev_count - 1)) };
                     params->msg = std::make_unique<char[]>(err_.size() + 1);
@@ -311,7 +318,7 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 
             if (avs_bits_per_component(&fi->vi) == 8)
             {
-                params->dither = avs_defined(avs_array_elt(args, DITHER)) ? avs_as_bool(avs_array_elt(args, DITHER)) : 1;
+                params->dither = avs_defined(avs_array_elt(args, Dither)) ? avs_as_bool(avs_array_elt(args, Dither)) : 1;
 
                 if (params->dither)
                 {
@@ -322,12 +329,12 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 
                     if (!avs_defined(v))
                     {
-                        params->dither_params->lut_size = (avs_defined(avs_array_elt(args, LUT_SIZE))) ? avs_as_int(avs_array_elt(args, LUT_SIZE)) : 6;
+                        params->dither_params->lut_size = (avs_defined(avs_array_elt(args, Lut_size))) ? avs_as_int(avs_array_elt(args, Lut_size)) : 6;
                         if (params->dither_params->lut_size > 8)
                             v = avs_new_value_error("libplacebo_Deband: lut_size must be less than or equal to 8");
                     }
                     if (!avs_defined(v))
-                        params->dither_params->temporal = (avs_defined(avs_array_elt(args, TEMPORAL))) ? avs_as_bool(avs_array_elt(args, TEMPORAL)) : false;
+                        params->dither_params->temporal = (avs_defined(avs_array_elt(args, Temporal))) ? avs_as_bool(avs_array_elt(args, Temporal)) : false;
                 }
             }
             else
@@ -348,7 +355,7 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
                 params->process[1] = 2;
                 params->process[2] = 2;
 
-                const int num_planes{ (avs_defined(avs_array_elt(args, PLANES))) ? avs_array_size(avs_array_elt(args, PLANES)) : 0 };
+                const int num_planes{ (avs_defined(avs_array_elt(args, Planes))) ? avs_array_size(avs_array_elt(args, Planes)) : 0 };
                 if (num_planes > avs_num_components(&fi->vi))
                     v = avs_new_value_error("libplacebo_Deband: plane index out of range.");
 
@@ -356,12 +363,12 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
                 {
                     for (int i{ 0 }; i < num_planes; ++i)
                     {
-                        const int plane_v{ avs_as_int(*(avs_as_array(avs_array_elt(args, PLANES)) + i)) };
+                        const int plane_v{ avs_as_int(*(avs_as_array(avs_array_elt(args, Planes)) + i)) };
                         if (plane_v < 1 || plane_v > 3)
                             v = avs_new_value_error("libplacebo_Deband: plane must be between 1..3.");
 
                         if (!avs_defined(v))
-                            params->process[i] = avs_as_int(*(avs_as_array(avs_array_elt(args, PLANES)) + i));
+                            params->process[i] = avs_as_int(*(avs_as_array(avs_array_elt(args, Planes)) + i));
                     }
                 }
             }
@@ -371,25 +378,25 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (!avs_defined(v))
     {
         params->deband_params = std::make_unique<pl_deband_params>();
-        params->deband_params->iterations = (avs_defined(avs_array_elt(args, ITERATIONS))) ? avs_as_int(avs_array_elt(args, ITERATIONS)) : 1;
+        params->deband_params->iterations = (avs_defined(avs_array_elt(args, Iterations))) ? avs_as_int(avs_array_elt(args, Iterations)) : 1;
         if (params->deband_params->iterations < 0)
             v = avs_new_value_error("libplacebo_Deband: iterations must be greater than or equal to 0.");
     }
     if (!avs_defined(v))
     {
-        params->deband_params->threshold = (avs_defined(avs_array_elt(args, THRESHOLD))) ? avs_as_float(avs_array_elt(args, THRESHOLD)) : 4.0f;
+        params->deband_params->threshold = (avs_defined(avs_array_elt(args, Threshold))) ? avs_as_float(avs_array_elt(args, Threshold)) : 4.0f;
         if (params->deband_params->threshold < 0.0f)
             v = avs_new_value_error("libplacebo_Deband: threshold must be greater than or equal to 0.0");
     }
     if (!avs_defined(v))
     {
-        params->deband_params->radius = (avs_defined(avs_array_elt(args, RADIUS))) ? avs_as_float(avs_array_elt(args, RADIUS)) : 16.0f;
+        params->deband_params->radius = (avs_defined(avs_array_elt(args, Radius))) ? avs_as_float(avs_array_elt(args, Radius)) : 16.0f;
         if (params->deband_params->radius < 0.0f)
             v = avs_new_value_error("libplacebo_Deband: radius must be greater than or equal to 0.0");
     }
     if (!avs_defined(v))
     {
-        params->deband_params->grain = (avs_defined(avs_array_elt(args, GRAIN))) ? avs_as_float(avs_array_elt(args, GRAIN)) : 6.0f;
+        params->deband_params->grain = (avs_defined(avs_array_elt(args, Grain))) ? avs_as_float(avs_array_elt(args, Grain)) : 6.0f;
         if (params->deband_params->grain < 0.0f)
             v = avs_new_value_error("libplacebo_Deband: grain must be greater than or equal to 0.0");
     }

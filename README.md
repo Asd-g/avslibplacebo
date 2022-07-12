@@ -235,7 +235,7 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     Default: 6.5.
 
 - trc\
-    The colorspace's transfer function (gamma / EOTF) to use for linearizing:
+    The colorspace's transfer function (gamma / EOTF) to use for linearizing.\
     0: UNKNOWN
 
     Standard dynamic range:\
@@ -260,7 +260,7 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     Default: 1.
 
 - cplace\
-    Chroma sample position in YUV formats:
+    Chroma sample position in YUV formats.\
     0: left\
     1: center\
     2: topleft\
@@ -316,7 +316,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     Default: 1.
 
 - matrix\
-    0: UNKNOWN
+    0: UNKNOWN\
     1: BT_601 (ITU-R Rec. BT.601 (SD))\
     2: BT_709 (ITU-R Rec. BT.709 (HD))\
     3: SMPTE_240M (SMPTE-240M)\
@@ -328,7 +328,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     Default: 2.
 
 - trc\
-    The colorspace's transfer function (gamma / EOTF) to use for linearizing:
+    The colorspace's transfer function (gamma / EOTF) to use for linearizing.\
     0: UNKNOWN
 
     Standard dynamic range:\
