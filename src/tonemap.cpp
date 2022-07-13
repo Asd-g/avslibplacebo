@@ -320,7 +320,7 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
     std::unique_ptr<pl_dovi_metadata> dovi_meta{ std::make_unique<pl_dovi_metadata>() };
     uint8_t dovi_profile{ 0 };
 
-    if (d->use_dovi && avs_prop_num_elements(fi->env, props, "DolbyVisionRPU"))
+    if (d->use_dovi && avs_prop_num_elements(fi->env, props, "DolbyVisionRPU") > -1)
     {
         const uint8_t* doviRpu{ reinterpret_cast<const uint8_t*>(avs_prop_get_data(fi->env, props, "DolbyVisionRPU", 0, &err)) };
         size_t doviRpuSize{ static_cast<size_t>(avs_prop_get_data_size(fi->env, props, "DolbyVisionRPU", 0, &err)) };
@@ -333,7 +333,12 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
             const DoviRpuDataHeader* header{ dovi_rpu_get_header(rpu) };
 
             if (!header)
-                ErrorText = (std::string("Failed parsing RPU: ") + std::string(dovi_rpu_get_error(rpu))).c_str();
+            {
+                const std::string err{ std::string("Failed parsing RPU: ") + std::string(dovi_rpu_get_error(rpu)) };
+                d->msg = std::make_unique<char[]>(err.size() + 1);
+                strcpy(d->msg.get(), err.c_str());
+                ErrorText = d->msg.get();
+            }
             else
             {
                 dovi_profile = header->guessed_profile;
@@ -342,122 +347,126 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
                 dovi_rpu_free_header(header);
             }
 
-            // Profile 5
-            if (d->src_csp == CSP_DOVI)
+            if (!ErrorText)
             {
-                d->src_repr->sys = PL_COLOR_SYSTEM_DOLBYVISION;
-                d->src_repr->dovi = dovi_meta.get();
-
-                if (dovi_profile == 5)
-                    d->dst_repr->levels = PL_COLOR_LEVELS_FULL;
-            }
-
-            // Update mastering display from RPU
-            if (header->vdr_dm_metadata_present_flag)
-            {
-                const DoviVdrDmData* vdr_dm_data{ dovi_rpu_get_vdr_dm_data(rpu) };
-
-                d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
-                d->src_pl_csp->hdr.max_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_max_pq / 4095.0f);
-
-                if (vdr_dm_data->dm_data.level6)
+                // Profile 5
+                if (d->src_csp == CSP_DOVI)
                 {
-                    const DoviExtMetadataBlockLevel6* meta{ vdr_dm_data->dm_data.level6 };
+                    d->src_repr->sys = PL_COLOR_SYSTEM_DOLBYVISION;
+                    d->src_repr->dovi = dovi_meta.get();
 
-                    if (!maxCll || !maxFall)
-                    {
-                        d->src_pl_csp->hdr.max_cll = meta->max_content_light_level;
-                        d->src_pl_csp->hdr.max_fall = meta->max_frame_average_light_level;
-                    }
+                    if (dovi_profile == 5)
+                        d->dst_repr->levels = PL_COLOR_LEVELS_FULL;
                 }
 
-                dovi_rpu_free_vdr_dm_data(vdr_dm_data);
+                // Update mastering display from RPU
+                if (header->vdr_dm_metadata_present_flag)
+                {
+                    const DoviVdrDmData* vdr_dm_data{ dovi_rpu_get_vdr_dm_data(rpu) };
+
+                    d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
+                    d->src_pl_csp->hdr.max_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_max_pq / 4095.0f);
+
+                    if (vdr_dm_data->dm_data.level6)
+                    {
+                        const DoviExtMetadataBlockLevel6* meta{ vdr_dm_data->dm_data.level6 };
+
+                        if (!maxCll || !maxFall)
+                        {
+                            d->src_pl_csp->hdr.max_cll = meta->max_content_light_level;
+                            d->src_pl_csp->hdr.max_fall = meta->max_frame_average_light_level;
+                        }
+                    }
+
+                    dovi_rpu_free_vdr_dm_data(vdr_dm_data);
+                }
             }
 
             dovi_rpu_free(rpu);
         }
     }
 
-    const int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
-    const int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
-    const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
-    pl_plane_data pl[3]{};
-
-    for (int i{ 0 }; i < 3; ++i)
+    if (!ErrorText)
     {
-        pl[i].type = PL_FMT_UNORM;
-        pl[i].width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
-        pl[i].height = avs_get_height_p(src, planes[i]);
-        pl[i].pixel_stride = 2;
-        pl[i].row_stride = avs_get_pitch_p(src, planes[i]);
-        pl[i].pixels = avs_get_read_ptr_p(src, planes[i]);
-        pl[i].component_size[0] = 16;
-        pl[i].component_pad[0] = 0;
-        pl[i].component_map[0] = i;
-    }
+        const int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
+        const int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
+        const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
+        pl_plane_data pl[3]{};
 
-    {
-        std::lock_guard<std::mutex> lck(mtx);
-
-        const int reconf{ tonemap_reconfig(*d->vf.get(), *pl) };
-        if (reconf == 0)
+        for (int i{ 0 }; i < 3; ++i)
         {
-            const int filt{ tonemap_filter(*d->vf.get(), d->packed_dst, *pl, *d, *d->src_repr.get(), *d->dst_repr.get()) };
+            pl[i].type = PL_FMT_UNORM;
+            pl[i].width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
+            pl[i].height = avs_get_height_p(src, planes[i]);
+            pl[i].pixel_stride = 2;
+            pl[i].row_stride = avs_get_pitch_p(src, planes[i]);
+            pl[i].pixels = avs_get_read_ptr_p(src, planes[i]);
+            pl[i].component_size[0] = 16;
+            pl[i].component_pad[0] = 0;
+            pl[i].component_map[0] = i;
+        }
 
-            if (filt)
+        {
+            std::lock_guard<std::mutex> lck(mtx);
+
+            const int reconf{ tonemap_reconfig(*d->vf.get(), *pl) };
+            if (reconf == 0)
             {
-                switch (filt)
+                const int filt{ tonemap_filter(*d->vf.get(), d->packed_dst, *pl, *d, *d->src_repr.get(), *d->dst_repr.get()) };
+
+                if (filt)
                 {
-                    case -1: ErrorText = "libplacebo_Tonemap: failed uploading data to the GPU!"; break;
-                    case -2: ErrorText = "libplacebo_Tonemap: failed processing planes!"; break;
-                    default: ErrorText = "libplacebo_Tonemap: failed downloading data from the GPU!";
+                    switch (filt)
+                    {
+                        case -1: ErrorText = "libplacebo_Tonemap: failed uploading data to the GPU!"; break;
+                        case -2: ErrorText = "libplacebo_Tonemap: failed processing planes!"; break;
+                        default: ErrorText = "libplacebo_Tonemap: failed downloading data from the GPU!";
+                    }
+                }
+            }
+            else
+            {
+                switch (reconf)
+                {
+                    case -1: ErrorText = "libplacebo_Tonemap: failed configuring filter: no good texture format!"; break;
+                    default: ErrorText = "libplacebo_Tonemap: failed creating GPU textures!";
                 }
             }
         }
-        else
+
+        if (!ErrorText)
         {
-            switch (reconf)
+            p2p_buffer_param pack_params{};
+            pack_params.width = fi->vi.width;
+            pack_params.height = fi->vi.height;
+            pack_params.packing = p2p_bgr48_le;
+            pack_params.src[0] = d->packed_dst;
+            pack_params.src_stride[0] = fi->vi.width * 2 * 3;
+
+            for (int k = 0; k < 3; ++k)
             {
-                case -1: ErrorText = "libplacebo_Tonemap: failed configuring filter: no good texture format!"; break;
-                default: ErrorText = "libplacebo_Tonemap: failed creating GPU textures!";
+                pack_params.dst[k] = avs_get_write_ptr_p(dst, planes[k]);
+                pack_params.dst_stride[k] = avs_get_pitch_p(dst, planes[k]);
             }
+
+            p2p_unpack_frame(&pack_params, 0);
+
+            if (avs_num_components(&fi->vi) > 3)
+                avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, AVS_PLANAR_A), avs_get_pitch_p(dst, AVS_PLANAR_A), avs_get_read_ptr_p(src, AVS_PLANAR_A), avs_get_pitch_p(src, AVS_PLANAR_A),
+                    avs_get_row_size_p(src, AVS_PLANAR_A), avs_get_height_p(src, AVS_PLANAR_A));
+
+            avs_release_video_frame(src);
+
+            return dst;
         }
     }
 
-    if (ErrorText)
-    {
-        avs_release_video_frame(src);
-        avs_release_video_frame(dst);
+    avs_release_video_frame(src);
+    avs_release_video_frame(dst);
 
-        fi->error = ErrorText;
+    fi->error = ErrorText;
 
-        return nullptr;
-    }
-    else
-    {
-        p2p_buffer_param pack_params{};
-        pack_params.width = fi->vi.width;
-        pack_params.height = fi->vi.height;
-        pack_params.packing = p2p_bgr48_le;
-        pack_params.src[0] = d->packed_dst;
-        pack_params.src_stride[0] = fi->vi.width * 2 * 3;
-
-        for (int k = 0; k < 3; ++k)
-        {
-            pack_params.dst[k] = avs_get_write_ptr_p(dst, planes[k]);
-            pack_params.dst_stride[k] = avs_get_pitch_p(dst, planes[k]);
-        }
-
-        p2p_unpack_frame(&pack_params, 0);
-
-        if (avs_num_components(&fi->vi) > 3)
-            avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, AVS_PLANAR_A), avs_get_pitch_p(dst, AVS_PLANAR_A), avs_get_read_ptr_p(src, AVS_PLANAR_A), avs_get_pitch_p(src, AVS_PLANAR_A),
-                avs_get_row_size_p(src, AVS_PLANAR_A), avs_get_height_p(src, AVS_PLANAR_A));
-
-        avs_release_video_frame(src);
-
-        return dst;
-    }
+    return nullptr;
 }
 
 static void AVSC_CC free_tonemap(AVS_FilterInfo* fi)
