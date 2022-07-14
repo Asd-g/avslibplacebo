@@ -217,8 +217,7 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
 
     const char* ErrorText{ 0 };
     AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
-    AVS_VideoFrame* dst{ avs_new_video_frame(fi->env, &fi->vi) };
-    avs_copy_frame_props(fi->env, src, dst);
+    AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
 
     const int planes_y[4]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V, AVS_PLANAR_A };
     const int planes_r[4]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B, AVS_PLANAR_A };

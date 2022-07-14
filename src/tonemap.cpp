@@ -253,8 +253,7 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
     const char* ErrorText{ 0 };
     AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
-    AVS_VideoFrame* dst{ avs_new_video_frame(fi->env, &fi->vi) };
-    avs_copy_frame_props(fi->env, src, dst);
+    AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
 
     int err;
     const AVS_Map* props{ avs_get_frame_props_ro(fi->env, src) };
