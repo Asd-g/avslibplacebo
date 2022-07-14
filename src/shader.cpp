@@ -359,16 +359,21 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
                     vkDestroyInstance(inst, nullptr);
 
-                    AVS_Value args_[2]{ avs_new_value_clip(clip), avs_new_value_string(params->msg.get()) };
-                    clip = avs_new_c_filter(env, &fi, avs_invoke(fi->env, "Text", avs_new_value_array(args_, 2), 0), 1);
+                    AVS_Value cl{ avs_new_value_clip(clip) };
+                    AVS_Value args_[2]{ cl, avs_new_value_string(params->msg.get()) };
+                    AVS_Value inv{ avs_invoke(fi->env, "Text", avs_new_value_array(args_, 2), 0) };
+                    AVS_Clip* clip1{ avs_new_c_filter(env, &fi, inv, 1) };
 
-                    v = avs_new_value_clip(clip);
+                    v = avs_new_value_clip(clip1);
 
                     fi->user_data = reinterpret_cast<void*>(params);
                     fi->get_frame = shader_get_frame;
                     fi->set_cache_hints = shader_set_cache_hints;
                     fi->free_filter = free_shader;
 
+                    avs_release_clip(clip1);
+                    avs_release_value(inv);
+                    avs_release_value(cl);
                     avs_release_clip(clip);
 
                     return v;

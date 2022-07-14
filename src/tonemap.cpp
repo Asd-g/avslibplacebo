@@ -451,6 +451,28 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
             p2p_unpack_frame(&pack_params, 0);
 
+            AVS_Map* props{ avs_get_frame_props_rw(fi->env, dst) };
+            avs_prop_set_int(fi->env, props, "_ColorRange", (d->dst_repr->levels = PL_COLOR_LEVELS_FULL) ? 0 : 1, 0);
+
+            if (d->dst_pl_csp->transfer == PL_COLOR_TRC_BT_1886)
+            {
+                avs_prop_set_int(fi->env, props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 1, 0);
+                avs_prop_set_int(fi->env, props, "_Transfer", 1, 0);
+                avs_prop_set_int(fi->env, props, "_Primaries", 1, 0);
+            }
+            else if (d->dst_pl_csp->transfer == PL_COLOR_TRC_PQ)
+            {
+                avs_prop_set_int(fi->env, props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 9, 0);
+                avs_prop_set_int(fi->env, props, "_Transfer", 16, 0);
+                avs_prop_set_int(fi->env, props, "_Primaries", 9, 0);
+            }
+            else
+            {
+                avs_prop_set_int(fi->env, props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 9, 0);
+                avs_prop_set_int(fi->env, props, "_Transfer", 18, 0);
+                avs_prop_set_int(fi->env, props, "_Primaries", 9, 0);
+            }
+
             if (avs_num_components(&fi->vi) > 3)
                 avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, AVS_PLANAR_A), avs_get_pitch_p(dst, AVS_PLANAR_A), avs_get_read_ptr_p(src, AVS_PLANAR_A), avs_get_pitch_p(src, AVS_PLANAR_A),
                     avs_get_row_size_p(src, AVS_PLANAR_A), avs_get_height_p(src, AVS_PLANAR_A));
@@ -568,16 +590,21 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
                     vkDestroyInstance(inst, nullptr);
 
-                    AVS_Value args_[2]{ avs_new_value_clip(clip), avs_new_value_string(params->msg.get()) };
-                    clip = avs_new_c_filter(env, &fi, avs_invoke(fi->env, "Text", avs_new_value_array(args_, 2), 0), 1);
+                    AVS_Value cl{ avs_new_value_clip(clip) };
+                    AVS_Value args_[2]{ cl, avs_new_value_string(params->msg.get()) };
+                    AVS_Value inv{ avs_invoke(fi->env, "Text", avs_new_value_array(args_, 2), 0) };
+                    AVS_Clip* clip1{ avs_new_c_filter(env, &fi, inv, 1) };
 
-                    v = avs_new_value_clip(clip);
+                    v = avs_new_value_clip(clip1);
 
                     fi->user_data = reinterpret_cast<void*>(params);
                     fi->get_frame = tonemap_get_frame;
                     fi->set_cache_hints = tonemap_set_cache_hints;
                     fi->free_filter = free_tonemap;
 
+                    avs_release_clip(clip1);
+                    avs_release_value(inv);
+                    avs_release_value(cl);
                     avs_release_clip(clip);
 
                     return v;
