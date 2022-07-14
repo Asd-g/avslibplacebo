@@ -6,7 +6,9 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 
 ### Requirements:
 
-- AviSynth+ 3.6 or later
+- Vulkan device
+
+- AviSynth+ r3682 or later
 
 - Microsoft VisualC++ Redistributable Package 2022 (can be downloaded from [here](https://github.com/abbodi1406/vcredist/releases))
 
@@ -14,7 +16,8 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 
 [Debanding](#debanding)\
 [Resampling](#resampling)\
-[Shader](#shader)
+[Shader](#shader)\
+[Tone mapping](#tone-mapping)
 
 ### Debanding
 
@@ -442,6 +445,139 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     The slope (steepness) of the sigmoid curve.\
     Must be between 1.0 and 20.0.\
     Default: 6.5.
+
+- device\
+    Sets target Vulkan device.\
+    Use list_device to get the index of the available devices.\
+    By default the default device is selected.
+
+- list_device\
+    Whether to draw the devices list on the frame.\
+    Default: False.
+
+[Back to filters](#filters)
+
+### Tone mapping
+
+#### Usage:
+
+```
+libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", int "intent", int "gamut_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", bool "use_dovi", int "device", bool "list_device")
+```
+
+#### Parameters:
+
+- input\
+    A clip to process.\
+    It must be 16-bit planar format. (min. 3 planes)\
+    The output is YUV444P16 if the input is YUV.
+
+- src_csp, dst_csp\
+    Respectively source and output color space.\
+    0: SDR\
+    1: HDR10\
+    2: HLG\
+    3: DOVI\
+    Default: src_csp = 1; dst_csp = 0.
+
+    For example, to map from [BT.2020, PQ] (HDR) to traditional [BT.709, BT.1886] (SDR), pass `src_csp=1, dst_csp=0`.
+
+- src_max, src_min, dst_max, dst_min\
+    Source max/min and output max/min in nits (cd/m^2).\
+    The source values can be derived from props if available.\
+    Default: max = 1000 (HDR)/203 (SDR); min = 0.005 (HDR)/0.2023 (SDR)
+
+- dynamic_peak_detection\
+    Enables computation of signal stats to optimize HDR tonemapping quality.\
+    Default: True.
+
+- smoothing_period\
+    Smoothing coefficient for the detected values.\
+    This controls the time parameter (tau) of an IIR low pass filter. In other words, it represent the cutoff period (= 1 / cutoff frequency) in frames. Frequencies below this length will be suppressed.\
+    This helps block out annoying "sparkling" or "flickering" due to small variations in frame-to-frame brightness.\
+    Default: 100.0.
+
+- scene_threshold_low, scene_threshold_high\
+    In order to avoid reacting sluggishly on scene changes as a result of the low-pass filter, we disable it when the difference between the current frame brightness and the average frame brightness exceeds a given threshold difference.\
+    But rather than a single hard cutoff, which would lead to weird discontinuities on fades, we gradually disable it over a small window of brightness ranges. These parameters control the lower and upper bounds of this window, in dB.\
+    To disable this logic entirely, set either one to a negative value.\
+    Default: scene_threshold_low = 5.5; scene_threshold_high = 10.0
+
+- intent\
+    The rendering intent to use for gamut mapping.\
+    0: PERCEPTUAL\
+    1: RELATIVE_COLORIMETRIC\
+    2: SATURATION\
+    3: ABSOLUTE_COLORIMETRIC\
+    Default: 1.
+
+- gamut_mode\
+    How to handle out-of-gamut colors when changing the content primaries.\
+    0: CLIP (Do nothing, simply clip out-of-range colors to the RGB volume)\
+    1: WARN (Equal to CLIP but also highlights out-of-gamut colors (by coloring them pink))\
+    2: DARKEN (Linearly reduces content brightness to preserves saturated details, followed by clipping the remaining out-of-gamut colors.\
+    As the name implies, this makes everything darker, but provides a good balance between preserving details and colors.)\
+    3: DESATURATE (Hard-desaturates out-of-gamut colors towards white, while preserving the luminance. Has a tendency to shift colors.)\
+    Default: 0.
+
+- tone_mapping_function\
+    0: auto (Special tone mapping function that means "automatically pick a good function based on the HDR levels")\
+    1: clip (Performs no tone-mapping, just clips out-of-range colors.\
+    Retains perfect color accuracy for in-range colors but completely destroys out-of-range information.\
+    Does not perform any black point adaptation.)\
+    2: bt2390 (EETF from the ITU-R Report BT.2390, a hermite spline roll-off with linear segment.\
+    The knee point offset is configurable. Note that this defaults to 1.0, rather than the value of 0.5 from the ITU-R spec.)\
+    3: bt2446a (EETF from ITU-R Report BT.2446, method A.\
+    Can be used for both forward and inverse tone mapping. Not configurable.)\
+    4: spline (Simple spline consisting of two polynomials, joined by a single pivot point.\
+    The `tone_mapping_param` gives the pivot point (in PQ space), defaulting to 0.30.\
+    Can be used for both forward and inverse tone mapping.)\
+    5: reinhard (Simple non-linear, global tone mapping algorithm.\
+    Named after Erik Reinhard.\
+    The `tone_mapping_param` specifies the local contrast coefficient at the display peak.\
+    Essentially, a value of param=0.5 implies that the reference white will be about half as bright as when clipping.\
+    Defaults to 0.5, which results in the simplest formulation of this function.)\
+    6: mobius (Generalization of the reinhard tone mapping algorithm to support an additional linear slope near black.\
+    The tone mapping `tone_mapping_param` indicates the trade-off between the linear section and the non-linear section.\
+    Essentially, for param=0.5, every color value below 0.5 will be mapped linearly, with the higher values being non-linearly tone mapped.\
+    Values near 1.0 make this curve behave like `clip`, and values near 0.0 make this curve behave like `reinhard`.\
+    The default value is 0.3, which provides a good balance between colorimetric accuracy and preserving out-of-gamut details.\
+    The name is derived from its function shape (ax+b)/(cx+d), which is known as a Möbius transformation in mathematics.)\
+    7: hable (Piece-wise, filmic tone-mapping algorithm developed by John Hable for use in Uncharted 2, inspired by a similar tone-mapping algorithm used by Kodak.\
+    Popularized by its use in video games with HDR rendering.\
+    Preserves both dark and bright details very well, but comes with the drawback of changing the average brightness quite significantly.\
+    This is sort of similar to `reinhard` with `tone_mapping_param` 0.24.)\
+    8: gamma (Fits a gamma (power) function to transfer between the source and target color spaces, effectively resulting in a perceptual hard-knee joining two roughly linear sections.\
+    This preserves details at all scales fairly accurately, but can result in an image with a muted or dull appearance.\
+    The `tone_mapping_param` is used as the cutoff point, defaulting to 0.5.)\
+    9: linear (Linearly stretches the input range to the output range, in PQ space.\
+    This will preserve all details accurately, but results in a significantly different average brightness.\
+    Can be used for inverse tone-mapping in addition to regular tone-mapping.\
+    The parameter can be used as an additional linear gain coefficient (defaulting to 1.0).)\
+    Default: 0.
+
+- tone_mapping_mode\
+    0: AUTO (Picks the best tone-mapping mode based on internal heuristics.)\
+    1: RGB (Per-channel tone-mapping in RGB. Guarantees no clipping and heavily desaturates the output, but distorts the colors quite significantly.)\
+    2: MAX (Tone-mapping is performed on the brightest component found in the signal.\
+    Good at preserving details in highlights, but has a tendency to crush blacks.)\
+    3: HYBRID (Tone-map per-channel for highlights and linearly (luma-based) for midtones/shadows, based on a fixed gamma 2.4 coefficient curve.)\
+    4: LUMA (Tone-map linearly on the luma component, and adjust (desaturate) the chromaticities to compensate using a simple constant factor.\
+    This is essentially the mode used in ITU-R BT.2446 method A.)\
+    Default: 0.
+
+- tone_mapping_param\
+    The tone-mapping curve parameter.\
+    Default: Default for the selected `tone_mapping_function`.
+
+- tone_mapping_crosstalk\
+    Extra crosstalk factor to apply before tone-mapping.\
+    May help to improve the appearance of very bright, monochromatic highlights.\
+    Default: 0.04.
+
+- use_dovi\
+    Whether to use the Dolby Vision RPU for ST2086 metadata.\
+    Defaults to true when tonemapping from Dolby Vision.
 
 - device\
     Sets target Vulkan device.\
