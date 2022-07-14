@@ -652,7 +652,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
             if (avs_defined(avs_array_elt(args, Scene_threshold_high)))
                 params->peakDetectParams->scene_threshold_high = avs_as_float(avs_array_elt(args, Scene_threshold_high));
 
-            params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 0);
+            params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 1);
 
             if (params->src_csp == CSP_DOVI && srcIsRGB)
                 v = avs_new_value_error("libplacebo_Tonemap: Dolby Vision source colorspace must be a YUV clip!");
