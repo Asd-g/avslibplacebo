@@ -606,7 +606,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
         Install Vulkan SDk.
         Build libp2p.
         Build dolby_vision.
-        Building libplacebo (apply this patch ):
+        Building libplacebo (apply this patch https://gist.github.com/Asd-g/f7dc6f88f9a48c3442ebc996f45bc5ce):
             set LIB=%LIB%;C:\VulkanSDK\1.3.216.0\Lib
             meson build -Dvulkan-registry=C:\VulkanSDK\1.3.216.0\share\vulkan\registry\vk_.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled
         Use solution files to build avs_libplacebo.
