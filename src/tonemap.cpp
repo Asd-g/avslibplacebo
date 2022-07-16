@@ -1,7 +1,7 @@
 #include <mutex>
 
 #include "avs_libplacebo.h"
-#include "libp2p/p2p_api.h"
+#include "p2p_api.h"
 
 extern "C" {
 #include "libdovi/rpu_parser.h"

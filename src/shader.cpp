@@ -5,7 +5,7 @@
 #endif
 
 #include "avs_libplacebo.h"
-#include "libp2p/p2p_api.h"
+#include "p2p_api.h"
 
 static std::mutex mtx;
 
