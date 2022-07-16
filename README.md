@@ -8,7 +8,7 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 
 - Vulkan device
 
-- AviSynth+ r3682 or later
+- AviSynth+ r3682 (can be downloaded from [here](https://gitlab.com/uvz/AviSynthPlus-Builds) until official release is uploaded) or later
 
 - Microsoft VisualC++ Redistributable Package 2022 (can be downloaded from [here](https://github.com/abbodi1406/vcredist/releases))
 
