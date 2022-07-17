@@ -179,9 +179,6 @@ static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data
 {
     priv* p{ &priv_ };
 
-    pl_fmt in_fmt{ p->tex_in[0]->params.format };
-    pl_fmt out_fmt{ p->tex_out[0]->params.format };
-
     // Upload planes
     pl_tex_transfer_params ttr{};
     ttr.tex = p->tex_in[0];

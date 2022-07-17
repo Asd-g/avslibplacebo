@@ -15,59 +15,63 @@ static std::unique_ptr<pl_dovi_metadata> create_dovi_meta(DoviRpuOpaque& rpu, co
     if (hdr.use_prev_vdr_rpu_flag)
         goto done;
 
-    const DoviRpuDataMapping* vdm{ dovi_rpu_get_data_mapping(&rpu) };
-    if (!vdm)
-        goto skip_vdm;
-
-    const uint64_t bits{ hdr.bl_bit_depth_minus8 + 8 };
-    const float scale{ 1.0f / (1 << hdr.coefficient_log2_denom) };
-
-    for (int c{ 0 }; c < 3; ++c)
     {
-        pl_dovi_metadata::pl_reshape_data* cmp{ &dovi_meta->comp[c] };
-        uint16_t pivot{ 0 };
-        cmp->num_pivots = hdr.num_pivots_minus_2[c] + 2;
-        for (int pivot_idx{ 0 }; pivot_idx < cmp->num_pivots; ++pivot_idx)
-        {
-            pivot += hdr.pred_pivot_value[c].data[pivot_idx];
-            cmp->pivots[pivot_idx] = static_cast<float>(pivot) / ((1 << bits) - 1);
-        }
+        const DoviRpuDataMapping* vdm{ dovi_rpu_get_data_mapping(&rpu) };
+        if (!vdm)
+            goto skip_vdm;
 
-        for (int i{ 0 }; i < cmp->num_pivots - 1; ++i)
         {
-            memset(cmp->poly_coeffs[i], 0, sizeof(cmp->poly_coeffs[i]));
-            cmp->method[i] = vdm->mapping_idc[c].data[i];
+            const uint64_t bits{ hdr.bl_bit_depth_minus8 + 8 };
+            const float scale{ 1.0f / (1 << hdr.coefficient_log2_denom) };
 
-            switch (cmp->method[i])
+            for (int c{ 0 }; c < 3; ++c)
             {
-                case 0: // polynomial
-                    for (int k{ 0 }; k <= vdm->poly_order_minus1[c].data[i] + 1; ++k)
+                pl_dovi_metadata::pl_reshape_data* cmp{ &dovi_meta->comp[c] };
+                uint16_t pivot{ 0 };
+                cmp->num_pivots = hdr.num_pivots_minus_2[c] + 2;
+                for (int pivot_idx{ 0 }; pivot_idx < cmp->num_pivots; ++pivot_idx)
+                {
+                    pivot += hdr.pred_pivot_value[c].data[pivot_idx];
+                    cmp->pivots[pivot_idx] = static_cast<float>(pivot) / ((1 << bits) - 1);
+                }
+
+                for (int i{ 0 }; i < cmp->num_pivots - 1; ++i)
+                {
+                    memset(cmp->poly_coeffs[i], 0, sizeof(cmp->poly_coeffs[i]));
+                    cmp->method[i] = vdm->mapping_idc[c].data[i];
+
+                    switch (cmp->method[i])
                     {
-                        int64_t ipart{ vdm->poly_coef_int[c].list[i]->data[k] };
-                        uint64_t fpart{ vdm->poly_coef[c].list[i]->data[k] };
-                        cmp->poly_coeffs[i][k] = ipart + scale * fpart;
+                        case 0: // polynomial
+                            for (int k{ 0 }; k <= vdm->poly_order_minus1[c].data[i] + 1; ++k)
+                            {
+                                int64_t ipart{ vdm->poly_coef_int[c].list[i]->data[k] };
+                                uint64_t fpart{ vdm->poly_coef[c].list[i]->data[k] };
+                                cmp->poly_coeffs[i][k] = ipart + scale * fpart;
+                            }
+                            break;
+                        case 1: // MMR
+                            int64_t ipart{ vdm->mmr_constant_int[c].data[i] };
+                            uint64_t fpart{ vdm->mmr_constant[c].data[i] };
+                            cmp->mmr_constant[i] = ipart + scale * fpart;
+                            cmp->mmr_order[i] = vdm->mmr_order_minus1[c].data[i] + 1;
+                            for (int j{ 1 }; j <= cmp->mmr_order[i]; ++j)
+                            {
+                                for (int k{ 0 }; k < 7; ++k)
+                                {
+                                    ipart = vdm->mmr_coef_int[c].list[i]->list[j]->data[k];
+                                    fpart = vdm->mmr_coef[c].list[i]->list[j]->data[k];
+                                    cmp->mmr_coeffs[i][j - 1][k] = ipart + scale * fpart;
+                                }
+                            }
+                            break;
                     }
-                    break;
-                case 1: // MMR
-                    int64_t ipart{ vdm->mmr_constant_int[c].data[i] };
-                    uint64_t fpart{ vdm->mmr_constant[c].data[i] };
-                    cmp->mmr_constant[i] = ipart + scale * fpart;
-                    cmp->mmr_order[i] = vdm->mmr_order_minus1[c].data[i] + 1;
-                    for (int j{ 1 }; j <= cmp->mmr_order[i]; ++j)
-                    {
-                        for (int k{ 0 }; k < 7; ++k)
-                        {
-                            ipart = vdm->mmr_coef_int[c].list[i]->list[j]->data[k];
-                            fpart = vdm->mmr_coef[c].list[i]->list[j]->data[k];
-                            cmp->mmr_coeffs[i][j - 1][k] = ipart + scale * fpart;
-                        }
-                    }
-                    break;
+                }
             }
         }
-    }
 
-    dovi_rpu_free_data_mapping(vdm);
+        dovi_rpu_free_data_mapping(vdm);
+    }
 skip_vdm:
 
     if (hdr.vdr_dm_metadata_present_flag)
@@ -97,7 +101,7 @@ done:
     return dovi_meta;
 }
 
-static enum supported_colorspace
+enum supported_colorspace
 {
     CSP_SDR = 0,
     CSP_HDR10,
@@ -342,7 +346,7 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
             {
                 dovi_profile = header->guessed_profile;
 
-                dovi_meta = std::move(create_dovi_meta(*rpu, *header));
+                dovi_meta = create_dovi_meta(*rpu, *header);
                 dovi_rpu_free_header(header);
             }
 
