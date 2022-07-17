@@ -70,10 +70,10 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <IncludePath>..\..\dovi_tool\target\i686-pc-windows-msvc\release\include;..\..\libplacebo\src\include;C:\Users\asdq\Downloads\libplacebo\build_x86\src\include;..\..\libp2p;C:\Users\asdq\Downloads\dep_libs\include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
-    <LibraryPath>C:\Users\asdq\Downloads\libplacebo\build_x86\src;..\..\dovi_tool\target\i686-pc-windows-msvc\release;C:\Users\asdq\Downloads\dep_libs\lib;..\..\libp2p\_msvc\Release;..\..\Avisynth_3.7.3_20220419_test1\x86_xp\c_api;$(LibraryPath)</LibraryPath>
+    <LibraryPath>..\..\libplacebo\build_x86\src;..\..\dovi_tool\target\i686-pc-windows-msvc\release;C:\Users\asdq\Downloads\dep_libs\lib;..\..\libp2p\_msvc\Release;..\..\Avisynth_3.7.3_20220419_test1\x86_xp\c_api;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\..\dovi_tool\target\x86_64-pc-windows-msvc\debug\include;..\..\libplacebo\build64\src\include;C:\VulkanSDK\1.3.216.0\Include;..\..\libplacebo\src\include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\libp2p;..\..\dovi_tool\target\x86_64-pc-windows-msvc\debug\include;..\..\libplacebo\build64\src\include;C:\VulkanSDK\1.3.216.0\Include;..\..\libplacebo\src\include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
     <LibraryPath>..\..\dovi_tool\target\x86_64-pc-windows-msvc\debug;..\..\libp2p\_msvc\x64\Debug;..\..\AviSynthPlus\build_test\Output\c_api;C:\VulkanSDK\1.3.216.0\Lib;..\..\libplacebo\build64\src;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -125,7 +125,7 @@
     <ClCompile />
     <ClCompile />
     <Link>
-      <AdditionalDependencies>libplacebo.a;vulkan-1.lib;shaderc_combined.lib;AviSynth.lib;p2p.lib;p2p_simd.lib;dovi.lib;ws2_32.lib;bcrypt.lib;Userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libplacebo.a;vulkan-1.lib;shaderc_shared.lib;AviSynth.lib;p2p.lib;p2p_simd.lib;dovi.lib;ws2_32.lib;bcrypt.lib;Userenv.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ClCompile>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -140,6 +140,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <WholeProgramOptimization>true</WholeProgramOptimization>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <OptimizeReferences>true</OptimizeReferences>
