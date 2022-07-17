@@ -1,4 +1,5 @@
 #include <mutex>
+#include <regex>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -283,7 +284,7 @@ static int AVSC_CC shader_set_cache_hints(AVS_FilterInfo* fi, int cachehints, in
 
 AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum { Clip, Shader, Width, Height, Chroma_loc, Matrix, Trc, Filter, Radius, Clamp, Taper, Blur, Param1, Param2, Antiring, Lut_entries, Cutoff, Sigmoidize, Linearize, Sigmoid_center, Sigmoid_slope, Device, List_device };
+    enum { Clip, Shader, Width, Height, Chroma_loc, Matrix, Trc, Filter, Radius, Clamp, Taper, Blur, Param1, Param2, Antiring, Lut_entries, Cutoff, Sigmoidize, Linearize, Sigmoid_center, Sigmoid_slope, Shader_param, Device, List_device };
 
     AVS_FilterInfo* fi;
     AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
@@ -427,8 +428,9 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
                 {
                     std::rewind(shader_file);
 
-                    char* bdata{ new char[shader_size + 1] };
-                    std::fread(bdata, 1, shader_size, shader_file);
+                    std::string bdata;
+                    bdata.resize(shader_size);
+                    std::fread(bdata.data(), 1, shader_size, shader_file);
                     bdata[shader_size] = '\0';
 
                     std::fclose(shader_file);
@@ -443,11 +445,29 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
                     vkDestroyInstance(inst, nullptr);
 
-                    params->shader = pl_mpv_user_shader_parse(params->vf->gpu, bdata, strlen(bdata));
-                    delete[](bdata);
+                    if (avs_defined(avs_array_elt(args, Shader_param)))
+                    {
+                        std::regex reg(R"((\w+)=([^ >]+)(?: (\w+)(?:=([^ >]+)))?(?: (\w+)(?:=([^ >]+)))?(?: (\w+)(?:=([^ >]+)))?)");
+                        std::string shader_p{ avs_as_string(avs_array_elt(args, Shader_param)) };
 
-                    if (!params->shader)
-                        v = avs_new_value_error("libplacebo_Shader: Failed parsing shader!");
+                        std::smatch match;
+                        if (!std::regex_match(shader_p.cbegin(), shader_p.cend(), match, reg))
+                            v = avs_new_value_error("libplacebo_Shader: failed parsing shader_param.");
+
+                        if (!avs_defined(v))
+                        {
+                            for (int i = 1; i < match.size(); i += 2)
+                                bdata = std::regex_replace(bdata, std::regex(std::string("(#define\\s") + match[i].str() + std::string("\\s+)(.+?)(?=\\/\\/|\\s)")), "$01" + match[i + 1].str());
+                        }
+                    }
+
+                    if (!avs_defined(v))
+                    {
+                        params->shader = pl_mpv_user_shader_parse(params->vf->gpu, bdata.c_str(), bdata.size());
+
+                        if (!params->shader)
+                            v = avs_new_value_error("libplacebo_Shader: failed parsing shader!");
+                    }
                 }
             }
         }

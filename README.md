@@ -285,7 +285,7 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 #### Usage:
 
 ```
-libplacebo_Shader(clip input, string shader, int "width", int "height", int "chroma_loc", int "matrix", int "trc",  string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "antiring", float "lut_entries", float "cutoff", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", int "device", bool "list_device")
+libplacebo_Shader(clip input, string shader, int "width", int "height", int "chroma_loc", int "matrix", int "trc",  string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "antiring", float "lut_entries", float "cutoff", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", string "shader_param", int "device", bool "list_device")
 ```
 
 #### Parameters:
@@ -445,6 +445,19 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     The slope (steepness) of the sigmoid curve.\
     Must be between 1.0 and 20.0.\
     Default: 6.5.
+
+- shader_param\
+    This changes shader's parameter set by `#define XXXX YYYY` on the fly.\
+    Format is: `param=value`.\
+    It takes up to 4 parameters.\
+    The parameter is case sensitive and must be the same as in the shader file.\
+    If more than one parameter is specified, the parameters must be separated by space.
+
+    Usage example: if the shader has the following parameters:
+    * #define INTENSITY_SIGMA 0.1 //Intensity window size, higher is stronger denoise, must be a positive real number
+    * #define SPATIAL_SIGMA 1.0 //Spatial window size, higher is stronger denoise, must be a positive real number
+
+    `shader_param="INTENSITY_SIGMA=0.15 SPATIAL_SIGMA=1.1"`
 
 - device\
     Sets target Vulkan device.\
@@ -612,7 +625,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
         Use solution files to build avs_libplacebo.
     ```
 
-- Linux\
+- Linux
     ```
     Requirements:
         - Vulkan lib
