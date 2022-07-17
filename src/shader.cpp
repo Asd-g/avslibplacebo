@@ -456,7 +456,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
                         if (!avs_defined(v))
                         {
-                            for (int i = 1; i < match.size(); i += 2)
+                            for (int i = 1; match[i + 1].matched; i += 2)
                                 bdata = std::regex_replace(bdata, std::regex(std::string("(#define\\s") + match[i].str() + std::string("\\s+)(.+?)(?=\\/\\/|\\s)")), "$01" + match[i + 1].str());
                         }
                     }
