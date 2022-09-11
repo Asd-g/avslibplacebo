@@ -11,12 +11,13 @@ struct deband
     int dither;
     std::unique_ptr<pl_dither_params> dither_params;
     std::unique_ptr<pl_deband_params> deband_params;
+    std::unique_ptr<pl_deband_params> deband_params1;
     uint8_t frame_index;
     int list_device;
     std::unique_ptr<char[]> msg;
 };
 
-static bool deband_do_plane(priv& p, deband& data) noexcept
+static bool deband_do_plane(priv& p, deband& data, const int planeIdx) noexcept
 {
     deband* d{ &data };
 
@@ -31,7 +32,8 @@ static bool deband_do_plane(priv& p, deband& data) noexcept
     pl_sample_src src{};
     src.tex = p.tex_in[0];
 
-    pl_shader_deband(sh, &src, d->deband_params.get());
+    pl_shader_deband(sh, &src, ((planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) &&
+        d->deband_params1) ? d->deband_params1.get() : d->deband_params.get());
 
     if (d->dither)
         pl_shader_dither(sh, p.tex_out[0]->params.format->component_depth[0], &p.dither_state, d->dither_params.get());
@@ -90,7 +92,7 @@ static int deband_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& 
         return -1;
 
     // Process plane
-    if (!deband_do_plane(*p, d))
+    if (!deband_do_plane(*p, d, planeIdx))
         return -2;
 
     pl_tex_transfer_params ttr1{};
@@ -205,7 +207,7 @@ static int AVSC_CC deband_set_cache_hints(AVS_FilterInfo* fi, int cachehints, in
 
 AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum { Clip, Iterations, Threshold, Radius, Grain, Dither, Lut_size, Temporal, Planes, Device, List_device };
+    enum { Clip, Iterations, Threshold, Radius, Grainy, Grainc, Dither, Lut_size, Temporal, Planes, Device, List_device };
 
     AVS_FilterInfo* fi;
     AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
@@ -397,9 +399,25 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
     }
     if (!avs_defined(v))
     {
-        params->deband_params->grain = (avs_defined(avs_array_elt(args, Grain))) ? avs_as_float(avs_array_elt(args, Grain)) : 6.0f;
+        params->deband_params->grain = (avs_defined(avs_array_elt(args, Grainy))) ? avs_as_float(avs_array_elt(args, Grainy)) : 6.0f;
         if (params->deband_params->grain < 0.0f)
-            v = avs_new_value_error("libplacebo_Deband: grain must be greater than or equal to 0.0");
+            v = avs_new_value_error("libplacebo_Deband: grainY must be greater than or equal to 0.0");
+    }
+    if (!avs_defined(v))
+    {
+        const float grainC{ static_cast<float>((avs_defined(avs_array_elt(args, Grainc))) ? avs_as_float(avs_array_elt(args, Grainc)) : params->deband_params->grain) };
+        if (grainC < 0.0f)
+            v = avs_new_value_error("libplacebo_Deband: grainC must be greater than or equal to 0.0");
+
+        if (!avs_defined(v))
+        {
+            if (params->deband_params->grain != grainC)
+            {
+                params->deband_params1 = std::make_unique<pl_deband_params>();
+                memcpy(params->deband_params1.get(), params->deband_params.get(), sizeof(pl_deband_params));
+                params->deband_params1->grain = grainC;
+            }
+        }
     }
     if (!avs_defined(v))
     {
