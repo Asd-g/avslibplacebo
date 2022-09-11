@@ -114,6 +114,7 @@ struct tonemap
     std::unique_ptr<priv> vf;
     std::unique_ptr<pl_render_params> render_params;
     enum supported_colorspace src_csp;
+    enum supported_colorspace dst_csp;
     std::unique_ptr<pl_color_space> src_pl_csp;
     std::unique_ptr<pl_color_space> dst_pl_csp;
     int64_t original_src_max;
@@ -352,7 +353,7 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
             if (!ErrorText)
             {
-                // Profile 5
+                // Profile 5, 7 or 8 mapping
                 if (d->src_csp == CSP_DOVI)
                 {
                     d->src_repr->sys = PL_COLOR_SYSTEM_DOLBYVISION;
@@ -367,7 +368,16 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
                 {
                     const DoviVdrDmData* vdr_dm_data{ dovi_rpu_get_vdr_dm_data(rpu) };
 
-                    d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
+                    // Should avoid changing the source black point when mapping to PQ
+                    // As the source image already has a specific black point,
+                    // and the RPU isn't necessarily ground truth on the actual coded values
+
+                    // Set target black point to the same as source
+                    if (d->src_csp == CSP_DOVI && d->dst_csp == CSP_HDR10)
+                        d->dst_pl_csp->hdr.min_luma = d->src_pl_csp->hdr.min_luma;
+                    else
+                        d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
+
                     d->src_pl_csp->hdr.max_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_max_pq / 4095.0f);
 
                     if (vdr_dm_data->dm_data.level6)
@@ -669,8 +679,9 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     if (!avs_defined(v))
     {
         params->dst_pl_csp = std::make_unique<pl_color_space>();
+        params->dst_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Dst_csp)) ? avs_as_int(avs_array_elt(args, Dst_csp)) : 0);
 
-        switch (avs_defined(avs_array_elt(args, Dst_csp)) ? avs_as_int(avs_array_elt(args, Dst_csp)) : 0)
+        switch (params->dst_csp)
         {
             case CSP_SDR: *params->dst_pl_csp.get() = pl_color_space_bt709; break;
             case CSP_HDR10: *params->dst_pl_csp.get() = pl_color_space_hdr10; break;
