@@ -73,13 +73,13 @@
     <LibraryPath>..\..\libplacebo\build_x86\src;..\..\dovi_tool\target\i686-pc-windows-msvc\release;C:\Users\asdq\Downloads\dep_libs\lib;..\..\libp2p\_msvc\Release;..\..\Avisynth_3.7.3_20220419_test1\x86_xp\c_api;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\..\libp2p;..\..\dovi_tool\target\x86_64-pc-windows-msvc\debug\include;..\..\libplacebo\build64\src\include;C:\VulkanSDK\1.3.216.0\Include;..\..\libplacebo\src\include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
-    <LibraryPath>..\..\dovi_tool\target\x86_64-pc-windows-msvc\debug;..\..\libp2p\_msvc\x64\Debug;..\..\AviSynthPlus\build_test\Output\c_api;C:\VulkanSDK\1.3.216.0\Lib;..\..\libplacebo\build64\src;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\libp2p;..\..\dovi_tool\target\x86_64-pc-windows-msvc\debug\include;..\..\libplacebo\build64\src\include;C:\VulkanSDK\1.3.224.1\Include;..\..\libplacebo\src\include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
+    <LibraryPath>..\..\dovi_tool\target\x86_64-pc-windows-msvc\debug;..\..\libp2p\_msvc\x64\Debug;..\..\AviSynthPlus\build_test\Output\c_api;C:\VulkanSDK\1.3.224.1\Lib;..\..\libplacebo\build64\src;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\..\libplacebo\build_x64\src\include;..\..\libplacebo\src\include;..\..\dovi_tool\target_\x86_64-pc-windows-msvc\release\include;..\..\libp2p;C:\VulkanSDK\1.3.216.0\Include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
-    <LibraryPath>..\..\dovi_tool\target_\x86_64-pc-windows-msvc\release;..\..\libplacebo\build_x64\src;..\..\libp2p\_msvc\x64\Release;C:\VulkanSDK\1.3.216.0\Lib;..\..\AviSynthPlus\build_x64\Output\c_api;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\libplacebo\build_x64\src\include;..\..\libplacebo\src\include;..\..\dovi_tool\target_\x86_64-pc-windows-msvc\release\include;..\..\libp2p;C:\VulkanSDK\1.3.224.1\Include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
+    <LibraryPath>..\..\dovi_tool\target_\x86_64-pc-windows-msvc\release;..\..\libplacebo\build_x64\src;..\..\libp2p\_msvc\x64\Release;C:\VulkanSDK\1.3.224.1\Lib;..\..\AviSynthPlus\build_x64\Output\c_api;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Label="LLVM" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <UseLldLink>false</UseLldLink>
