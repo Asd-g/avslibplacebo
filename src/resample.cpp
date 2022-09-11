@@ -209,9 +209,6 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
 {
     resample* d{ reinterpret_cast<resample*>(fi->user_data) };
 
-    if (d->list_device)
-        return avs_get_frame(fi->child, n);
-
     const char* ErrorText{ 0 };
     AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
     AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
@@ -299,12 +296,8 @@ static void AVSC_CC free_resample(AVS_FilterInfo* fi)
 {
     resample* d{ reinterpret_cast<resample*>(fi->user_data) };
 
-    if (!d->list_device)
-    {
-        pl_shader_obj_destroy(&d->lut);
-        avs_libplacebo_uninit(std::move(d->vf));
-    }
-
+    pl_shader_obj_destroy(&d->lut);
+    avs_libplacebo_uninit(std::move(d->vf));
     delete d;
 }
 
@@ -395,14 +388,9 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
                     AVS_Value cl{ avs_new_value_clip(clip) };
                     AVS_Value args_[2]{ cl, avs_new_value_string(params->msg.get()) };
                     AVS_Value inv{ avs_invoke(fi->env, "Text", avs_new_value_array(args_, 2), 0) };
-                    AVS_Clip* clip1{ avs_new_c_filter(env, &fi, inv, 1) };
+                    AVS_Clip* clip1{ avs_take_clip(inv, env) };
 
                     v = avs_new_value_clip(clip1);
-
-                    fi->user_data = reinterpret_cast<void*>(params);
-                    fi->get_frame = resample_get_frame;
-                    fi->set_cache_hints = resample_set_cache_hints;
-                    fi->free_filter = free_resample;
 
                     avs_release_clip(clip1);
                     avs_release_value(inv);
