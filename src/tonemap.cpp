@@ -337,7 +337,7 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
             if (!header)
             {
-                const std::string err{ std::string("Failed parsing RPU: ") + std::string(dovi_rpu_get_error(rpu)) };
+                const std::string err{ std::string("libplacebo_Tonemap: failed parsing RPU: ") + std::string(dovi_rpu_get_error(rpu)) };
                 d->msg = std::make_unique<char[]>(err.size() + 1);
                 strcpy(d->msg.get(), err.c_str());
                 ErrorText = d->msg.get();
@@ -387,6 +387,8 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
             dovi_rpu_free(rpu);
         }
+        else
+            ErrorText = "libplacebo_Tonemap: DolbyVisionRPU frame property is required for src_csp=3!";
     }
 
     if (!ErrorText)
