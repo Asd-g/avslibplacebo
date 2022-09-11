@@ -24,7 +24,7 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 #### Usage:
 
 ```
-libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius", float "grain", int "dither", int "lut_size", bool "temporal", int[] "planes", int "device", bool "list_device")
+libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius", float "grainY", float "grainC", int "dither", int "lut_size", bool "temporal", int[] "planes", int "device", bool "list_device")
 ```
 
 #### Parameters:
@@ -53,14 +53,15 @@ libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius
     Must be radius must be greater than or equal to 0.0.\
     Default: 16.0.
 
-- grain\
-    Add some extra noise to the image.\
+- grainY, grainC\
+    Add some extra noise respectively to the luma and chroma plane.\
     This significantly helps cover up remaining quantization artifacts.\
     Higher numbers add more noise.\
     Note: When debanding HDR sources, even a small amount of grain can result in a very big change to the brightness level.\
     It's recommended to either scale this value down or disable it entirely for HDR.\
     Must be greater than or equal to 0.0.\
-    Default: 6.0.
+    When the clip is RGB, grainC doesn't have effect.\
+    Default: grainY = 6.0; grainC = grainY.
 
 - dither\
     It's valid only for 8-bit clips.\
