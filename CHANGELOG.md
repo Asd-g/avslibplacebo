@@ -1,3 +1,6 @@
+##### 1.1.1:
+    libplacebo_Resample: fixed chroma location for YUV444.
+
 ##### 1.1.0:
     libplacebo_Deband: replaced parameter `grain` with `grainY` and `grainC`.
     Fixed undefined behavior when upstream throw runtime error.
