@@ -145,17 +145,17 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     * spline36 (3 taps)
     * spline64 (4 taps)
     * nearest (AKA box)
-    * bilinear (AKA triangle)
-    * gaussian
+    * bilinear (AKA triangle) (resizable)
+    * gaussian (resizable)
 
     Sinc family (all configured to 3 taps):
-    * sinc (unwindowed)
-    * lanczos (sinc-sinc)
-    * ginseng (sinc-jinc)
-    * ewa_jinc (unwindowed)
-    * ewa_lanczos (jinc-jinc)
-    * ewa_ginseng (jinc-sinc)
-    * ewa_hann (jinc-hann)
+    * sinc (unwindowed) (resizable)
+    * lanczos (sinc-sinc) (resizable)
+    * ginseng (sinc-jinc) (resizable)
+    * ewa_jinc (unwindowed) (resizable)
+    * ewa_lanczos (jinc-jinc) (resizable)
+    * ewa_ginseng (jinc-sinc) (resizable)
+    * ewa_hann (jinc-hann) (resizable)
 
     Spline family:
     * bicubic
@@ -361,17 +361,17 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     * spline36 (3 taps)
     * spline64 (4 taps)
     * nearest (AKA box)
-    * bilinear (AKA triangle)
-    * gaussian
+    * bilinear (AKA triangle) (resizable)
+    * gaussian (resizable)
 
     Sinc family (all configured to 3 taps):
-    * sinc (unwindowed)
-    * lanczos (sinc-sinc)
-    * ginseng (sinc-jinc)
-    * ewa_jinc (unwindowed)
-    * ewa_lanczos (jinc-jinc)
-    * ewa_ginseng (jinc-sinc)
-    * ewa_hann (jinc-hann)
+    * sinc (unwindowed) (resizable)
+    * lanczos (sinc-sinc) (resizable)
+    * ginseng (sinc-jinc) (resizable)
+    * ewa_jinc (unwindowed) (resizable)
+    * ewa_lanczos (jinc-jinc) (resizable)
+    * ewa_ginseng (jinc-sinc) (resizable)
+    * ewa_hann (jinc-hann) (resizable)
 
     Spline family:
     * bicubic
