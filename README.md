@@ -174,7 +174,7 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     If the function is not resizable, this doesn't have effect.
 
 - clamp\
-    Represents a clamping coefficient for negative weights:
+    Represents a clamping coefficient for negative weights:\
     0.0: No clamping.\
     1.0: Full clamping, i.e. all negative weights will be clamped to 0.\
     Default: 0.0.
@@ -390,7 +390,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     If the function is not resizable, this doesn't have effect.
 
 - clamp\
-    Represents a clamping coefficient for negative weights:
+    Represents a clamping coefficient for negative weights:\
     0.0: No clamping.\
     1.0: Full clamping, i.e. all negative weights will be clamped to 0.\
     Default: 0.0.
