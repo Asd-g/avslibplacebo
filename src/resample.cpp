@@ -498,7 +498,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 
         params->sample_params->filter.kernel = params->filter.get();
 
-        if (!avs_is_rgb(&fi->vi) && !avs_is_y(&fi->vi))
+        if (avs_is_420(&fi->vi) || avs_is_422(&fi->vi))
         {
             params->cplace = (avs_defined(avs_array_elt(args, Cplace))) ? avs_as_int(avs_array_elt(args, Cplace)) : 0;
             if (params->cplace < 0 || params->cplace > 2)
