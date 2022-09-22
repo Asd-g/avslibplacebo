@@ -177,6 +177,8 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     Represents a clamping coefficient for negative weights:\
     0.0: No clamping.\
     1.0: Full clamping, i.e. all negative weights will be clamped to 0.\
+    Values between 0.0 and 1.0 can be specified to apply only a moderate diminishment of negative weights.\
+    Higher values would lead to more blur.\
     Default: 0.0.
 
 - taper\
@@ -393,6 +395,8 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     Represents a clamping coefficient for negative weights:\
     0.0: No clamping.\
     1.0: Full clamping, i.e. all negative weights will be clamped to 0.\
+    Values between 0.0 and 1.0 can be specified to apply only a moderate diminishment of negative weights.\
+    Higher values would lead to more blur.\
     Default: 0.0.
 
 - taper\
