@@ -144,8 +144,8 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     * spline16 (2 taps)
     * spline36 (3 taps)
     * spline64 (4 taps)
-    * box (AKA nearest)
-    * triangle (AKA bilinear)
+    * nearest (AKA box)
+    * bilinear (AKA triangle)
     * gaussian
 
     Sinc family (all configured to 3 taps):
@@ -156,7 +156,6 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     * ewa_lanczos (jinc-jinc)
     * ewa_ginseng (jinc-sinc)
     * ewa_hann (jinc-hann)
-    * haasnsoft (blurred ewa_hann)
 
     Spline family:
     * bicubic
@@ -361,8 +360,8 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     * spline16 (2 taps)
     * spline36 (3 taps)
     * spline64 (4 taps)
-    * box (AKA nearest)
-    * triangle (AKA bilinear)
+    * nearest (AKA box)
+    * bilinear (AKA triangle)
     * gaussian
 
     Sinc family (all configured to 3 taps):
@@ -373,7 +372,6 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     * ewa_lanczos (jinc-jinc)
     * ewa_ginseng (jinc-sinc)
     * ewa_hann (jinc-hann)
-    * haasnsoft (blurred ewa_hann)
 
     Spline family:
     * bicubic
