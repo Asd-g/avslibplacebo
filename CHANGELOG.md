@@ -1,3 +1,6 @@
+##### 1.1.2:
+    libplacebo_Tonemap: properly handle video w/o `DolbyVisionRPU`.
+
 ##### 1.1.1:
     libplacebo_Resample: fixed chroma location for YUV444.
 
