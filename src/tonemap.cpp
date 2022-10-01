@@ -129,6 +129,7 @@ struct tonemap
     void* packed_dst;
     std::unique_ptr<pl_color_map_params> colorMapParams;
     std::unique_ptr<pl_peak_detect_params> peakDetectParams;
+    std::unique_ptr<pl_dovi_metadata> dovi_meta;
 };
 
 static bool tonemap_do_plane(priv& p, tonemap& data, const pl_plane& planes_, const pl_color_repr& src_repr, const pl_color_repr& dst_repr) noexcept
@@ -321,85 +322,83 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
         d->chromaLocation = static_cast<pl_chroma_location>(static_cast<int>(d->chromaLocation) + 1);
 
     // DOVI
-    std::unique_ptr<pl_dovi_metadata> dovi_meta{ std::make_unique<pl_dovi_metadata>() };
-    uint8_t dovi_profile{ 0 };
-
-    if (d->use_dovi && avs_prop_num_elements(fi->env, props, "DolbyVisionRPU") > -1)
+    if (d->src_csp == CSP_DOVI && avs_prop_num_elements(fi->env, props, "DolbyVisionRPU") > -1)
     {
-        const uint8_t* doviRpu{ reinterpret_cast<const uint8_t*>(avs_prop_get_data(fi->env, props, "DolbyVisionRPU", 0, &err)) };
-        size_t doviRpuSize{ static_cast<size_t>(avs_prop_get_data_size(fi->env, props, "DolbyVisionRPU", 0, &err)) };
-
-        if (doviRpu && doviRpuSize)
+        if (d->use_dovi)
         {
-            // fprintf(stderr, "Got Dolby Vision RPU, size %"PRIi64" at %"PRIxPTR"\n", doviRpuSize, (uintptr_t) doviRpu);
+            uint8_t dovi_profile{ 0 };
+            const uint8_t* doviRpu{ reinterpret_cast<const uint8_t*>(avs_prop_get_data(fi->env, props, "DolbyVisionRPU", 0, &err)) };
+            size_t doviRpuSize{ static_cast<size_t>(avs_prop_get_data_size(fi->env, props, "DolbyVisionRPU", 0, &err)) };
 
-            DoviRpuOpaque* rpu{ dovi_parse_unspec62_nalu(doviRpu, doviRpuSize) };
-            const DoviRpuDataHeader* header{ dovi_rpu_get_header(rpu) };
-
-            if (!header)
+            if (doviRpu && doviRpuSize)
             {
-                const std::string err{ std::string("libplacebo_Tonemap: failed parsing RPU: ") + std::string(dovi_rpu_get_error(rpu)) };
-                d->msg = std::make_unique<char[]>(err.size() + 1);
-                strcpy(d->msg.get(), err.c_str());
-                ErrorText = d->msg.get();
-            }
-            else
-            {
-                dovi_profile = header->guessed_profile;
+                // fprintf(stderr, "Got Dolby Vision RPU, size %"PRIi64" at %"PRIxPTR"\n", doviRpuSize, (uintptr_t) doviRpu);
 
-                dovi_meta = create_dovi_meta(*rpu, *header);
-                dovi_rpu_free_header(header);
-            }
+                DoviRpuOpaque* rpu{ dovi_parse_unspec62_nalu(doviRpu, doviRpuSize) };
+                const DoviRpuDataHeader* header{ dovi_rpu_get_header(rpu) };
 
-            if (!ErrorText)
-            {
-                // Profile 5, 7 or 8 mapping
-                if (d->src_csp == CSP_DOVI)
+                if (!header)
                 {
+                    const std::string err{ std::string("libplacebo_Tonemap: failed parsing RPU: ") + std::string(dovi_rpu_get_error(rpu)) };
+                    d->msg = std::make_unique<char[]>(err.size() + 1);
+                    strcpy(d->msg.get(), err.c_str());
+                    ErrorText = d->msg.get();
+                }
+                else
+                {
+                    dovi_profile = header->guessed_profile;
+
+                    d->dovi_meta = create_dovi_meta(*rpu, *header);
+                    dovi_rpu_free_header(header);
+                }
+
+                if (!ErrorText)
+                {
+                    // Profile 5, 7 or 8 mapping
                     d->src_repr->sys = PL_COLOR_SYSTEM_DOLBYVISION;
-                    d->src_repr->dovi = dovi_meta.get();
+                    d->src_repr->dovi = d->dovi_meta.get();
 
                     if (dovi_profile == 5)
                         d->dst_repr->levels = PL_COLOR_LEVELS_FULL;
-                }
 
-                // Update mastering display from RPU
-                if (header->vdr_dm_metadata_present_flag)
-                {
-                    const DoviVdrDmData* vdr_dm_data{ dovi_rpu_get_vdr_dm_data(rpu) };
-
-                    // Should avoid changing the source black point when mapping to PQ
-                    // As the source image already has a specific black point,
-                    // and the RPU isn't necessarily ground truth on the actual coded values
-
-                    // Set target black point to the same as source
-                    if (d->src_csp == CSP_DOVI && d->dst_csp == CSP_HDR10)
-                        d->dst_pl_csp->hdr.min_luma = d->src_pl_csp->hdr.min_luma;
-                    else
-                        d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
-
-                    d->src_pl_csp->hdr.max_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_max_pq / 4095.0f);
-
-                    if (vdr_dm_data->dm_data.level6)
+                    // Update mastering display from RPU
+                    if (header->vdr_dm_metadata_present_flag)
                     {
-                        const DoviExtMetadataBlockLevel6* meta{ vdr_dm_data->dm_data.level6 };
+                        const DoviVdrDmData* vdr_dm_data{ dovi_rpu_get_vdr_dm_data(rpu) };
 
-                        if (!maxCll || !maxFall)
+                        // Should avoid changing the source black point when mapping to PQ
+                        // As the source image already has a specific black point,
+                        // and the RPU isn't necessarily ground truth on the actual coded values
+
+                        // Set target black point to the same as source
+                        if (d->dst_csp == CSP_HDR10)
+                            d->dst_pl_csp->hdr.min_luma = d->src_pl_csp->hdr.min_luma;
+                        else
+                            d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
+
+                        d->src_pl_csp->hdr.max_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_max_pq / 4095.0f);
+
+                        if (vdr_dm_data->dm_data.level6)
                         {
-                            d->src_pl_csp->hdr.max_cll = meta->max_content_light_level;
-                            d->src_pl_csp->hdr.max_fall = meta->max_frame_average_light_level;
+                            const DoviExtMetadataBlockLevel6* meta{ vdr_dm_data->dm_data.level6 };
+
+                            if (!maxCll || !maxFall)
+                            {
+                                d->src_pl_csp->hdr.max_cll = meta->max_content_light_level;
+                                d->src_pl_csp->hdr.max_fall = meta->max_frame_average_light_level;
+                            }
                         }
+
+                        dovi_rpu_free_vdr_dm_data(vdr_dm_data);
                     }
-
-                    dovi_rpu_free_vdr_dm_data(vdr_dm_data);
                 }
-            }
 
-            dovi_rpu_free(rpu);
+                dovi_rpu_free(rpu);
+            }
         }
-        else
-            ErrorText = "libplacebo_Tonemap: DolbyVisionRPU frame property is required for src_csp=3!";
     }
+    else
+        ErrorText = "libplacebo_Tonemap: DolbyVisionRPU frame property is required for src_csp=3!";
 
     if (!ErrorText)
     {
@@ -666,6 +665,9 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     }
     if (!avs_defined(v))
     {
+        if (params->src_csp == CSP_DOVI)
+            params->dovi_meta = std::make_unique<pl_dovi_metadata>();
+
         params->src_pl_csp = std::make_unique<pl_color_space>();
 
         switch (params->src_csp)
