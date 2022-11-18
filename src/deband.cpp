@@ -205,7 +205,7 @@ static int AVSC_CC deband_set_cache_hints(AVS_FilterInfo* fi, int cachehints, in
 
 AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum { Clip, Iterations, Threshold, Radius, Grainy, Grainc, Dither, Lut_size, Temporal, Planes, Device, List_device };
+    enum { Clip, Iterations, Threshold, Radius, Grainy, Grainc, Dither, Lut_size, Temporal, Planes, Device, List_device, Grain_neutral };
 
     AVS_FilterInfo* fi;
     AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
@@ -389,6 +389,22 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
         params->deband_params->radius = (avs_defined(avs_array_elt(args, Radius))) ? avs_as_float(avs_array_elt(args, Radius)) : 16.0f;
         if (params->deband_params->radius < 0.0f)
             v = avs_new_value_error("libplacebo_Deband: radius must be greater than or equal to 0.0");
+    }
+    if (!avs_defined(v) && avs_defined(avs_array_elt(args, Grain_neutral)))
+    {
+        const int grain_neutral_num{ avs_array_size(avs_array_elt(args, Grain_neutral)) };
+        if (grain_neutral_num > avs_num_components(&fi->vi))
+            v = avs_new_value_error("libplacebo_Deband: grain_neutral index out of range.");
+
+        if (!avs_defined(v))
+        {
+            for (int i{ 0 }; i < grain_neutral_num; ++i)
+            {
+                params->deband_params->grain_neutral[i] = avs_as_float(*(avs_as_array(avs_array_elt(args, Grain_neutral)) + i));
+                if (params->deband_params->grain_neutral[i] < 0.0f)
+                    v = avs_new_value_error("libplacebo_Deband: grain_neutral must be greater than or equal to 0.0");
+            }
+        }
     }
     if (!avs_defined(v))
     {
