@@ -26,7 +26,7 @@ struct resample
     float src_height;
 };
 
-static int resample_do_plane(priv& p, resample& data, const int w, const int h, const float sx, const float sy, const int plane)
+static int resample_do_plane(priv& p, resample& data, const int w, const int h, const float sx, const float sy, const int planeIdx)
 {
     resample* d{ &data };
 
@@ -80,7 +80,7 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
     const float src_w{ [&]()
     {
         if (d->src_width > -1.0f)
-            return (plane) ? (d->src_width / d->subw) : d->src_width;
+            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_width / d->subw) : d->src_width;
         else
             return static_cast<float>(p.tex_in[0]->params.w);
     }() };
@@ -88,7 +88,7 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
     const float src_h{ [&]()
     {
         if (d->src_height > -1.0f)
-            return (plane) ? (d->src_height / d->subh) : d->src_height;
+            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_height / d->subh) : d->src_height;
         else
             return static_cast<float>(p.tex_in[0]->params.h);
     }() };
@@ -193,7 +193,7 @@ static int resample_reconfig(priv& priv_, const pl_plane_data& data, const int w
     return 0;
 }
 
-static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& src, resample& d, const int w, const int h, const float sx, const float sy, const int planeIdx, const int plane_num)
+static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& src, resample& d, const int w, const int h, const float sx, const float sy, const int planeIdx)
 {
     priv* p{ &priv_ };
 
@@ -207,7 +207,7 @@ static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data
         return -1;
 
     // Process plane
-    const int proc{ resample_do_plane(*p, d, w, h, sx, sy, plane_num) };
+    const int proc{ resample_do_plane(*p, d, w, h, sx, sy, planeIdx) };
     if (proc)
         return proc;
 
@@ -264,7 +264,7 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
                 const int filt{ resample_filter(*d->vf.get(), dst, plane, *d, dst_width, dst_height,
                     (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
                     (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y,
-                    planes[i], i) };
+                    planes[i]) };
 
                 if (filt)
                 {
