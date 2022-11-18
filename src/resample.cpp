@@ -22,9 +22,11 @@ struct resample
     float shift_w;
     float shift_h;
     int cplace;
+    float src_width;
+    float src_height;
 };
 
-static int resample_do_plane(priv& p, resample& data, const int w, const int h, const float sx, const float sy)
+static int resample_do_plane(priv& p, resample& data, const int w, const int h, const float sx, const float sy, const int plane)
 {
     resample* d{ &data };
 
@@ -75,7 +77,23 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
     // sampling
     //
 
-    pl_rect2df rect{ sx, sy, p.tex_in[0]->params.w + sx, p.tex_in[0]->params.h + sy, };
+    const float src_w{ [&]()
+    {
+        if (d->src_width > -1.0f)
+            return (plane) ? (d->src_width / d->subw) : d->src_width;
+        else
+            return static_cast<float>(p.tex_in[0]->params.w);
+    }() };
+
+    const float src_h{ [&]()
+    {
+        if (d->src_height > -1.0f)
+            return (plane) ? (d->src_height / d->subh) : d->src_height;
+        else
+            return static_cast<float>(p.tex_in[0]->params.h);
+    }() };
+
+    pl_rect2df rect{ sx, sy, src_w + sx, src_h + sy, };
 
     src.tex = sample_fbo;
     src.rect = rect;
@@ -175,7 +193,7 @@ static int resample_reconfig(priv& priv_, const pl_plane_data& data, const int w
     return 0;
 }
 
-static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& src, resample& d, const int w, const int h, const float sx, const float sy, const int planeIdx)
+static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& src, resample& d, const int w, const int h, const float sx, const float sy, const int planeIdx, const int plane_num)
 {
     priv* p{ &priv_ };
 
@@ -189,7 +207,7 @@ static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data
         return -1;
 
     // Process plane
-    const int proc{ resample_do_plane(*p, d, w, h, sx, sy) };
+    const int proc{ resample_do_plane(*p, d, w, h, sx, sy, plane_num) };
     if (proc)
         return proc;
 
@@ -246,7 +264,7 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
                 const int filt{ resample_filter(*d->vf.get(), dst, plane, *d, dst_width, dst_height,
                     (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
                     (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y,
-                    planes[i]) };
+                    planes[i], i) };
 
                 if (filt)
                 {
@@ -311,7 +329,7 @@ static int AVSC_CC resample_set_cache_hints(AVS_FilterInfo* fi, int cachehints, 
 
 AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum { Clip, Width, Height, Filter, Radius, Clamp, Taper, Blur, Param1, Param2, Sx, Sy, Antiring, Lut_entries, Cutoff, Sigmoidize, Linearize, Sigmoid_center, Sigmoid_slope, Trc, Cplace, Device, List_device };
+    enum { Clip, Width, Height, Filter, Radius, Clamp, Taper, Blur, Param1, Param2, Sx, Sy, Antiring, Lut_entries, Cutoff, Sigmoidize, Linearize, Sigmoid_center, Sigmoid_slope, Trc, Cplace, Device, List_device, Src_width, Src_height };
 
     AVS_FilterInfo* fi;
     AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
@@ -520,6 +538,28 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
             params->shift_w = 0.0f;
             params->shift_h = 0.0f;
         }
+    }
+    if (!avs_defined(v))
+    {
+        if (avs_defined(avs_array_elt(args, Src_width)))
+        {
+            params->src_width = avs_as_float(avs_array_elt(args, Src_width));
+            if (params->src_width <= 0.0f)
+                v = avs_new_value_error("libplacebo_Resample: src_width must be greater than 0.0.");
+        }
+        else
+            params->src_width = -1.0f;
+    }
+    if (!avs_defined(v))
+    {
+        if (avs_defined(avs_array_elt(args, Src_height)))
+        {
+            params->src_height = avs_as_float(avs_array_elt(args, Src_height));
+            if (params->src_height <= 0.0f)
+                v = avs_new_value_error("libplacebo_Resample: src_height must be greater than 0.0.");
+        }
+        else
+            params->src_height = -1.0f;
     }
     if (!avs_defined(v))
     {
