@@ -24,7 +24,7 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 #### Usage:
 
 ```
-libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius", float "grainY", float "grainC", int "dither", int "lut_size", bool "temporal", int[] "planes", int "device", bool "list_device")
+libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius", float "grainY", float "grainC", int "dither", int "lut_size", bool "temporal", int[] "planes", int "device", bool "list_device", float[] "grain_neutral")
 ```
 
 #### Parameters:
@@ -117,6 +117,13 @@ libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius
     Whether to draw the devices list on the frame.\
     Default: False.
 
+- grain_neutral\
+    "Neutral" grain value for each channel being debanded.\
+    Grain application will be modulated to avoid disturbing colors close to this value.\
+    Set this to a value corresponding to black in the relevant colorspace.\
+    Must be greater than 0.0\
+    Default: [0, 0, 0].
+
 [Back to filters](#filters)
 
 ### Resampling
@@ -124,7 +131,7 @@ libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius
 #### Usage:
 
 ```
-libplacebo_Resample(clip input, int width, int height, string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "sx", float "sy", float "antiring", float "lut_entries", float "cutoff", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", int "trc", int "cplace", int "device", bool "list_device")
+libplacebo_Resample(clip input, int width, int height, string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "sx", float "sy", float "antiring", float "lut_entries", float "cutoff", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", int "trc", int "cplace", int "device", bool "list_device", float "src_width", float "src_height")
 ```
 
 #### Parameters:
@@ -279,6 +286,16 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 - list_device\
     Whether to draw the devices list on the frame.\
     Default: False.
+
+- src_width\
+    Sets the width of the clip before resizing.\
+    Must be greater than 0.0.\
+    Default: Source width.
+
+- src_height\
+    Sets the height of the clip before resizing.\
+    Must be greater than 0.0.\
+    Default: Source height.
 
 [Back to filters](#filters)
 

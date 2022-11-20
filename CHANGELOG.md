@@ -1,3 +1,7 @@
+##### 1.1.3:
+    libplacebo_Resample: added `src_width` and `src_height` parameters.
+    libplacebo_Deband: added `grain_neutral` parameter.
+
 ##### 1.1.2:
     libplacebo_Tonemap: properly handle video w/o `DolbyVisionRPU`.
 
