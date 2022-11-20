@@ -1,6 +1,6 @@
 [submodule "libplacebo"]
 	path = libplacebo
-	url = https://code.videolan.org/videolan/libplacebo
+	url = https://gitlab.com/uvz/libplacebo
 [submodule "dovi_tool"]
 	path = dovi_tool
 	url = https://github.com/quietvoid/dovi_tool
