@@ -1,3 +1,6 @@
+##### 1.1.4:
+    libplacebo_Tonemap: fixed `src_csp` < 3.
+
 ##### 1.1.3:
     libplacebo_Resample: added `src_width` and `src_height` parameters.
     libplacebo_Deband: added `grain_neutral` parameter.
