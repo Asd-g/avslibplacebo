@@ -1,3 +1,6 @@
+##### 1.1.5:
+    libplacebo_Tonemap: fixed `dst_min`.
+
 ##### 1.1.4:
     libplacebo_Tonemap: fixed `src_csp` < 3.
 
