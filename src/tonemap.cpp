@@ -710,10 +710,9 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         pl_color_space_infer(params->src_pl_csp.get());
 
         if (avs_defined(avs_array_elt(args, Dst_max)))
-        {
             params->dst_pl_csp->hdr.max_luma = avs_as_float(avs_array_elt(args, Dst_max));
-            params->dst_pl_csp->hdr.min_luma = avs_defined(avs_array_elt(args, Dst_min)) ? avs_as_float(avs_array_elt(args, Dst_min)) : 0;
-        }
+        if (avs_defined(avs_array_elt(args, Dst_min)))
+            params->dst_pl_csp->hdr.min_luma = avs_as_float(avs_array_elt(args, Dst_min));
 
         pl_color_space_infer(params->dst_pl_csp.get());
 
