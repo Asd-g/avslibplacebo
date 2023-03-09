@@ -6,7 +6,6 @@
 #endif
 
 #include "avs_libplacebo.h"
-#include "p2p_api.h"
 
 static std::mutex mtx;
 
@@ -25,7 +24,6 @@ struct shader
     int subw;
     int subh;
     std::string msg;
-    void* packed_dst;
 };
 
 static bool shader_do_plane(priv& p, shader& data, const pl_plane& planes_) noexcept
@@ -55,17 +53,15 @@ static bool shader_do_plane(priv& p, shader& data, const pl_plane& planes_) noex
         pl_frame_set_chroma_location(&img, d->chromaLocation);
 
     pl_frame out{};
-    out.num_planes = 1;
+    out.num_planes = 3;
     out.repr = crpr;
     out.color = csp;
 
     for (int i{ 0 }; i < 3; ++i)
     {
-        out.planes[i].texture = p.tex_out[0];
-        out.planes[i].components = p.tex_out[0]->params.format->num_components;
-        out.planes[i].component_mapping[0] = 0;
-        out.planes[i].component_mapping[1] = 1;
-        out.planes[i].component_mapping[2] = 2;
+        out.planes[i].texture = p.tex_out[i];
+        out.planes[i].components = 1;
+        out.planes[i].component_mapping[0] = i;
     }
 
     pl_render_params renderParams{};
@@ -98,8 +94,8 @@ static int shader_reconfig(priv& priv_, const pl_plane_data& data_, shader& d, c
     for (int i{ 0 }; i < 3; ++i)
     {
         pl_tex_params t_r{};
-        t_r.w = data->width;
-        t_r.h = data->height;
+        t_r.w = data[i].width;
+        t_r.h = data[i].height;
         t_r.format = fmt[i];
         t_r.sampleable = true;
         t_r.host_writable = true;
@@ -108,33 +104,32 @@ static int shader_reconfig(priv& priv_, const pl_plane_data& data_, shader& d, c
             return -2;
     }
 
-    pl_plane_data plane_data{};
-    plane_data.type = PL_FMT_UNORM;
-    plane_data.pixel_stride = 6;
-
     for (int i{ 0 }; i < 3; ++i)
     {
-        plane_data.component_map[i] = i;
-        plane_data.component_pad[i] = 0;
-        plane_data.component_size[i] = 16;
+        pl_plane_data plane_data{};
+        plane_data.type = PL_FMT_UNORM;
+        plane_data.component_map[0] = i;
+        plane_data.component_pad[0] = 0;
+        plane_data.component_size[0] = 16;
+        plane_data.pixel_stride = 2;
+
+        const pl_fmt out{ pl_plane_find_fmt(p->gpu, nullptr, &plane_data) };
+
+        pl_tex_params t_r1{};
+        t_r1.w = w;
+        t_r1.h = h;
+        t_r1.format = out;
+        t_r1.renderable = true;
+        t_r1.host_readable = true;
+
+        if (!pl_tex_recreate(p->gpu, &p->tex_out[i], &t_r1))
+            return -2;
     }
-
-    const pl_fmt out{ pl_plane_find_fmt(p->gpu, nullptr, &plane_data) };
-
-    pl_tex_params t_r1{};
-    t_r1.w = w;
-    t_r1.h = h;
-    t_r1.format = out;
-    t_r1.renderable = true;
-    t_r1.host_readable = true;
-
-    if (!pl_tex_recreate(p->gpu, &p->tex_out[0], &t_r1))
-        return -2;
 
     return 0;
 }
 
-static int shader_filter(priv& priv_, void* dst, const pl_plane_data& src_, shader& d)
+static int shader_filter(priv& priv_, pl_buf* dst, const pl_plane_data& src_, shader& d, const int dst_stride)
 {
     priv* p{ &priv_ };
     const pl_plane_data* src{ &src_ };
@@ -153,12 +148,16 @@ static int shader_filter(priv& priv_, void* dst, const pl_plane_data& src_, shad
         return -2;
 
     // Download planes
-    pl_tex_transfer_params ttr1{};
-    ttr1.tex = p->tex_out[0];
-    ttr1.ptr = dst;
+    for (int i{ 0 }; i < 3; ++i)
+    {
+        pl_tex_transfer_params ttr1{};
+        ttr1.tex = p->tex_out[i];
+        ttr1.row_pitch = dst_stride;
+        ttr1.buf = dst[i];
 
-    if (!pl_tex_download(p->gpu, &ttr1))
-        return -3;
+        if (!pl_tex_download(p->gpu, &ttr1))
+            return -3;
+    }
 
     return 0;
 }
@@ -187,7 +186,12 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
     }
 
     constexpr int planes[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
+    const int dst_stride = ((avs_get_pitch(dst)) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
     pl_plane_data pl[3]{};
+    pl_buf dst_buf[3]{};
+    pl_buf_params buf_params{};
+    buf_params.size = dst_stride * fi->vi.height;
+    buf_params.host_mapped = true;
 
     for (int i{ 0 }; i < 3; ++i)
     {
@@ -200,6 +204,8 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
         pl[i].component_size[0] = 16;
         pl[i].component_pad[0] = 0;
         pl[i].component_map[0] = i;
+
+        dst_buf[i] = pl_buf_create(d->vf->gpu, &buf_params);
     }
 
     {
@@ -208,7 +214,7 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
         const int reconf{ shader_reconfig(*d->vf.get(), *pl, *d, fi->vi.width, fi->vi.height) };
         if (reconf == 0)
         {
-            const int filt{ shader_filter(*d->vf.get(), d->packed_dst, *pl, *d) };
+            const int filt{ shader_filter(*d->vf.get(), dst_buf, *pl, *d, dst_stride) };
 
             if (filt)
             {
@@ -235,26 +241,21 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
         avs_release_video_frame(src);
         avs_release_video_frame(dst);
 
+        for (int i{ 0 }; i < 3; ++i)
+            pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
+
         fi->error = ErrorText;
 
         return nullptr;
     }
     else
     {
-        p2p_buffer_param pack_params{};
-        pack_params.width = fi->vi.width;
-        pack_params.height = fi->vi.height;
-        pack_params.packing = p2p_bgr48_le;
-        pack_params.src[0] = d->packed_dst;
-        pack_params.src_stride[0] = fi->vi.width * 2 * 3;
-
-        for (int k = 0; k < 3; ++k)
+        for (int i{ 0 }; i < 3; ++i)
         {
-            pack_params.dst[k] = avs_get_write_ptr_p(dst, planes[k]);
-            pack_params.dst_stride[k] = avs_get_pitch_p(dst, planes[k]);
+            while (pl_buf_poll(d->vf->gpu, dst_buf[i], 0));
+            memcpy(avs_get_write_ptr_p(dst, planes[i]), dst_buf[i]->data, dst_buf[i]->params.size);
+            pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
         }
-
-        p2p_unpack_frame(&pack_params, 0);
 
         avs_release_video_frame(src);
 
@@ -266,7 +267,6 @@ static void AVSC_CC free_shader(AVS_FilterInfo* fi)
 {
     shader* d{ reinterpret_cast<shader*>(fi->user_data) };
 
-    operator delete (d->packed_dst);
     pl_mpv_user_shader_destroy(&d->shader);
     avs_libplacebo_uninit(std::move(d->vf));
     delete d;
@@ -460,7 +460,6 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     params->subw = avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U);
     params->subh = avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U);
 
-    params->packed_dst = operator new(fi->vi.width * fi->vi.height * 2 * 3);
     fi->vi.pixel_type = AVS_CS_YUV444P16;
 
     AVS_Value v{ avs_new_value_clip(clip) };
