@@ -438,17 +438,36 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
                     if (avs_defined(avs_array_elt(args, Shader_param)))
                     {
-                        std::regex reg(R"((\w+)=([^ >]+)(?: (\w+)(?:=([^ >]+)))?(?: (\w+)(?:=([^ >]+)))?(?: (\w+)(?:=([^ >]+)))?)");
                         std::string shader_p{ avs_as_string(avs_array_elt(args, Shader_param)) };
 
-                        std::smatch match;
-                        if (!std::regex_match(shader_p.cbegin(), shader_p.cend(), match, reg))
+                        int num_spaces{ 0 };
+                        int num_equals{ -1 };
+                        for (auto& string : shader_p)
+                        {
+                            if (string == ' ')
+                                ++num_spaces;
+                            if (string == '=')
+                                ++num_equals;
+                        }
+                        if (num_spaces != num_equals)
                             v = avs_new_value_error("libplacebo_Shader: failed parsing shader_param.");
 
                         if (!avs_defined(v))
                         {
-                            for (int i = 1; match[i + 1].matched; i += 2)
-                                bdata = std::regex_replace(bdata, std::regex(std::string("(#define\\s") + match[i].str() + std::string("\\s+)(.+?)(?=\\/\\/|\\s)")), "$01" + match[i + 1].str());
+                            std::string reg_parse{ "(\\w+)=([^ >]+)" };
+                            for (int i{ 0 }; i < num_spaces; ++i)
+                                reg_parse += "(?: (\\w+)=([^ >]+))";
+
+                            std::regex reg(reg_parse);
+                            std::smatch match;
+                            if (!std::regex_match(shader_p.cbegin(), shader_p.cend(), match, reg))
+                                v = avs_new_value_error("libplacebo_Shader: failed parsing shader_param.");
+
+                            if (!avs_defined(v))
+                            {
+                                for (int i = 1; match[i + 1].matched; i += 2)
+                                    bdata = std::regex_replace(bdata, std::regex(std::string("(#define\\s") + match[i].str() + std::string("\\s+)(.+?)(?=\\/\\/|\\s)")), "$01" + match[i + 1].str());
+                            }
                         }
                     }
 

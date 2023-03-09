@@ -469,7 +469,6 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 - shader_param\
     This changes shader's parameter set by `#define XXXX YYYY` on the fly.\
     Format is: `param=value`.\
-    It takes up to 4 parameters.\
     The parameter is case sensitive and must be the same as in the shader file.\
     If more than one parameter is specified, the parameters must be separated by space.
 
