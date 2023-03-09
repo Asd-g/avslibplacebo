@@ -121,8 +121,7 @@ struct tonemap
     int64_t original_src_min;
     int is_subsampled;
     enum pl_chroma_location chromaLocation;
-    int list_device;
-    std::unique_ptr<char[]> msg;
+    std::string msg;
     std::unique_ptr<pl_color_repr> src_repr;
     std::unique_ptr<pl_color_repr> dst_repr;
     int use_dovi;
@@ -341,10 +340,8 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
                     if (!header)
                     {
-                        const std::string err{ std::string("libplacebo_Tonemap: failed parsing RPU: ") + std::string(dovi_rpu_get_error(rpu)) };
-                        d->msg = std::make_unique<char[]>(err.size() + 1);
-                        strcpy(d->msg.get(), err.c_str());
-                        ErrorText = d->msg.get();
+                        d->msg = "libplacebo_Tonemap: failed parsing RPU: " + std::string(dovi_rpu_get_error(rpu));
+                        ErrorText = d->msg.c_str();
                     }
                     else
                     {
@@ -405,8 +402,8 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
     if (!ErrorText)
     {
-        const int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
-        const int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
+        constexpr int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
+        constexpr int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
         const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
         pl_plane_data pl[3]{};
 
@@ -524,255 +521,187 @@ static int AVSC_CC tonemap_set_cache_hints(AVS_FilterInfo* fi, int cachehints, i
 
 AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum {
+    enum
+    {
         Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Intent, Gamut_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
         Tone_mapping_crosstalk, Use_dovi, Device, List_device
     };
 
     AVS_FilterInfo* fi;
     AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
-    AVS_Value v{ avs_void };
 
     tonemap* params{ new tonemap() };
     const int srcIsRGB{ avs_is_rgb(&fi->vi) };
 
     if (!avs_is_planar(&fi->vi))
-        v = avs_new_value_error("libplacebo_Tonemap: clip must be in planar format.");
-    if (!avs_defined(v) && avs_bits_per_component(&fi->vi) != 16)
-        v = avs_new_value_error("libplacebo_Tonemap: bit depth must be 16-bit.");
-    if (!avs_defined(v) && avs_num_components(&fi->vi) < 3)
-        v = avs_new_value_error("libplacebo_Tonemap: the clip must have at least three planes.");
-    if (!avs_defined(v))
+        return set_error(clip, "libplacebo_Tonemap: clip must be in planar format.");
+    if (avs_bits_per_component(&fi->vi) != 16)
+        return set_error(clip, "libplacebo_Tonemap: bit depth must be 16-bit.");
+    if (avs_num_components(&fi->vi) < 3)
+        return set_error(clip, "libplacebo_Tonemap: the clip must have at least three planes.");
+
+    const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
+    const int list_device{ avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0 };
+
+    std::vector<VkPhysicalDevice> devices{};
+    VkInstance inst{};
+
+    if (list_device || device > -1)
     {
-        const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
-        params->list_device = avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0;
-
-        std::vector<VkPhysicalDevice> devices{};
-        VkInstance inst{};
-
-        if (params->list_device || device > -1)
-        {
-            VkInstanceCreateInfo info{};
-            info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-
-            uint32_t dev_count{ 0 };
-
-            if (vkCreateInstance(&info, nullptr, &inst))
-            {
-                v = avs_new_value_error("libplacebo_Tonemap: failed to create instance.");
-                vkDestroyInstance(inst, nullptr);
-            }
-            if (!avs_defined(v))
-            {
-                if (vkEnumeratePhysicalDevices(inst, &dev_count, nullptr))
-                    v = avs_new_value_error("libplacebo_Tonemap: failed to get devices number.");
-            }
-            if (!avs_defined(v))
-            {
-                if (device < -1 || device > static_cast<int>(dev_count) - 1)
-                {
-                    const std::string err_{ (std::string("libplacebo_Tonemap: device must be between -1 and ") + std::to_string(dev_count - 1)) };
-                    params->msg = std::make_unique<char[]>(err_.size() + 1);
-                    strcpy(params->msg.get(), err_.c_str());
-                    v = avs_new_value_error(params->msg.get());
-                }
-            }
-            if (!avs_defined(v))
-                devices.resize(dev_count);
-            if (!avs_defined(v))
-            {
-                if (vkEnumeratePhysicalDevices(inst, &dev_count, devices.data()))
-                    v = avs_new_value_error("libplacebo_Tonemap: failed to get get devices.");
-            }
-            if (!avs_defined(v))
-            {
-                if (params->list_device)
-                {
-                    std::string text;
-
-                    for (size_t i{ 0 }; i < devices.size(); ++i)
-                    {
-                        VkPhysicalDeviceProperties properties{};
-                        vkGetPhysicalDeviceProperties(devices[i], &properties);
-
-                        text += std::to_string(i) + ": " + std::string(properties.deviceName) + "\n";
-                    }
-
-                    params->msg = std::make_unique<char[]>(text.size() + 1);
-                    strcpy(params->msg.get(), text.c_str());
-
-                    vkDestroyInstance(inst, nullptr);
-
-                    AVS_Value cl{ avs_new_value_clip(clip) };
-                    AVS_Value args_[2]{ cl, avs_new_value_string(params->msg.get()) };
-                    AVS_Value inv{ avs_invoke(fi->env, "Text", avs_new_value_array(args_, 2), 0) };
-                    AVS_Clip* clip1{ avs_take_clip(inv, env) };
-
-                    v = avs_new_value_clip(clip1);
-
-                    avs_release_clip(clip1);
-                    avs_release_value(inv);
-                    avs_release_value(cl);
-                    avs_release_clip(clip);
-
-                    return v;
-                }
-            }
-        }
-        if (!avs_defined(v))
-        {
-            if (device == -1)
-            {
-                devices.resize(1);
-                params->vf = avs_libplacebo_init(devices[0]);
-            }
-            else
-                params->vf = avs_libplacebo_init(devices[device]);
-
-            vkDestroyInstance(inst, nullptr);
-
-            params->colorMapParams = std::make_unique<pl_color_map_params>(pl_color_map_default_params);
-
-            // Tone mapping function
-            int function_index{ avs_defined(avs_array_elt(args, Tone_mapping_function)) ? avs_as_int(avs_array_elt(args, Tone_mapping_function)) : 0 };
-
-            if (function_index >= pl_num_tone_map_functions)
-                function_index = 0;
-
-            params->colorMapParams->tone_mapping_function = pl_tone_map_functions[function_index];
-
-            params->colorMapParams->tone_mapping_param = avs_defined(avs_array_elt(args, Tone_mapping_param)) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
-
-            if (avs_defined(avs_array_elt(args, Intent)))
-                params->colorMapParams->intent = static_cast<pl_rendering_intent>(avs_as_int(avs_array_elt(args, Intent)));
-            if (avs_defined(avs_array_elt(args, Gamut_mode)))
-                params->colorMapParams->gamut_mode = static_cast<pl_gamut_mode>(avs_as_int(avs_array_elt(args, Gamut_mode)));
-            if (avs_defined(avs_array_elt(args, Tone_mapping_mode)))
-                params->colorMapParams->tone_mapping_mode = static_cast<pl_tone_map_mode>(avs_as_int(avs_array_elt(args, Tone_mapping_mode)));
-            if (avs_defined(avs_array_elt(args, Tone_mapping_crosstalk)))
-                params->colorMapParams->tone_mapping_crosstalk = avs_as_float(avs_array_elt(args, Tone_mapping_crosstalk));
-
-            params->peakDetectParams = std::make_unique<pl_peak_detect_params>(pl_peak_detect_default_params);
-            if (avs_defined(avs_array_elt(args, Smoothing_period)))
-                params->peakDetectParams->smoothing_period = avs_as_float(avs_array_elt(args, Smoothing_period));
-            if (avs_defined(avs_array_elt(args, Scene_threshold_low)))
-                params->peakDetectParams->scene_threshold_low = avs_as_float(avs_array_elt(args, Scene_threshold_low));
-            if (avs_defined(avs_array_elt(args, Scene_threshold_high)))
-                params->peakDetectParams->scene_threshold_high = avs_as_float(avs_array_elt(args, Scene_threshold_high));
-
-            params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 1);
-
-            if (params->src_csp == CSP_DOVI && srcIsRGB)
-                v = avs_new_value_error("libplacebo_Tonemap: Dolby Vision source colorspace must be a YUV clip!");
-        }
+        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, std::string("libplacebo_Tonemap"), device, list_device) };
+        if (avs_is_error(dev_info) || avs_is_clip(dev_info))
+            return dev_info;
     }
-    if (!avs_defined(v))
+    else if (device < -1)
     {
-        if (params->src_csp == CSP_DOVI)
-            params->dovi_meta = std::make_unique<pl_dovi_metadata>();
-
-        params->src_pl_csp = std::make_unique<pl_color_space>();
-
-        switch (params->src_csp)
-        {
-            case CSP_HDR10:
-            case CSP_DOVI: *params->src_pl_csp.get() = pl_color_space_hdr10; break;
-            case CSP_HLG: *params->src_pl_csp.get() = pl_color_space_bt2020_hlg; break;
-            default: v = avs_new_value_error("libplacebo_Tonemap: Invalid source colorspace for tonemapping.");
-        }
+        vkDestroyInstance(inst, nullptr);
+        return set_error(clip, "libplacebo_Tonemap: device must be greater than or equal to -1.");
     }
-    if (!avs_defined(v))
+
+    if (device == -1)
     {
-        params->dst_pl_csp = std::make_unique<pl_color_space>();
-        params->dst_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Dst_csp)) ? avs_as_int(avs_array_elt(args, Dst_csp)) : 0);
-
-        switch (params->dst_csp)
-        {
-            case CSP_SDR: *params->dst_pl_csp.get() = pl_color_space_bt709; break;
-            case CSP_HDR10: *params->dst_pl_csp.get() = pl_color_space_hdr10; break;
-            case CSP_HLG: *params->dst_pl_csp.get() = pl_color_space_bt2020_hlg; break;
-            default: v = avs_new_value_error("libplacebo_Tonemap: Invalid target colorspace for tonemapping.");
-        }
+        devices.resize(1);
+        params->vf = avs_libplacebo_init(devices[0]);
     }
-    if (!avs_defined(v))
+    else
+        params->vf = avs_libplacebo_init(devices[device]);
+
+    vkDestroyInstance(inst, nullptr);
+
+    params->colorMapParams = std::make_unique<pl_color_map_params>(pl_color_map_default_params);
+
+    // Tone mapping function
+    int function_index{ avs_defined(avs_array_elt(args, Tone_mapping_function)) ? avs_as_int(avs_array_elt(args, Tone_mapping_function)) : 0 };
+
+    if (function_index >= pl_num_tone_map_functions)
+        function_index = 0;
+
+    params->colorMapParams->tone_mapping_function = pl_tone_map_functions[function_index];
+
+    params->colorMapParams->tone_mapping_param = avs_defined(avs_array_elt(args, Tone_mapping_param)) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
+
+    if (avs_defined(avs_array_elt(args, Intent)))
+        params->colorMapParams->intent = static_cast<pl_rendering_intent>(avs_as_int(avs_array_elt(args, Intent)));
+    if (avs_defined(avs_array_elt(args, Gamut_mode)))
+        params->colorMapParams->gamut_mode = static_cast<pl_gamut_mode>(avs_as_int(avs_array_elt(args, Gamut_mode)));
+    if (avs_defined(avs_array_elt(args, Tone_mapping_mode)))
+        params->colorMapParams->tone_mapping_mode = static_cast<pl_tone_map_mode>(avs_as_int(avs_array_elt(args, Tone_mapping_mode)));
+    if (avs_defined(avs_array_elt(args, Tone_mapping_crosstalk)))
+        params->colorMapParams->tone_mapping_crosstalk = avs_as_float(avs_array_elt(args, Tone_mapping_crosstalk));
+
+    params->peakDetectParams = std::make_unique<pl_peak_detect_params>(pl_peak_detect_default_params);
+    if (avs_defined(avs_array_elt(args, Smoothing_period)))
+        params->peakDetectParams->smoothing_period = avs_as_float(avs_array_elt(args, Smoothing_period));
+    if (avs_defined(avs_array_elt(args, Scene_threshold_low)))
+        params->peakDetectParams->scene_threshold_low = avs_as_float(avs_array_elt(args, Scene_threshold_low));
+    if (avs_defined(avs_array_elt(args, Scene_threshold_high)))
+        params->peakDetectParams->scene_threshold_high = avs_as_float(avs_array_elt(args, Scene_threshold_high));
+
+    params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 1);
+
+    if (params->src_csp == CSP_DOVI && srcIsRGB)
+        return set_error(clip, "libplacebo_Tonemap: Dolby Vision source colorspace must be a YUV clip!");
+
+    if (params->src_csp == CSP_DOVI)
+        params->dovi_meta = std::make_unique<pl_dovi_metadata>();
+
+    params->src_pl_csp = std::make_unique<pl_color_space>();
+
+    switch (params->src_csp)
     {
-        if (avs_defined(avs_array_elt(args, Src_max)))
-        {
-            params->original_src_max = avs_as_float(avs_array_elt(args, Src_max));
-            params->src_pl_csp->hdr.max_luma = params->original_src_max;
-        }
-        if (avs_defined(avs_array_elt(args, Src_min)))
-        {
-            params->original_src_min = avs_as_float(avs_array_elt(args, Src_min));
-            params->src_pl_csp->hdr.min_luma = params->original_src_min;
-        }
-
-        pl_color_space_infer(params->src_pl_csp.get());
-
-        if (avs_defined(avs_array_elt(args, Dst_max)))
-            params->dst_pl_csp->hdr.max_luma = avs_as_float(avs_array_elt(args, Dst_max));
-        if (avs_defined(avs_array_elt(args, Dst_min)))
-            params->dst_pl_csp->hdr.min_luma = avs_as_float(avs_array_elt(args, Dst_min));
-
-        pl_color_space_infer(params->dst_pl_csp.get());
-
-        const int peak_detection{ avs_defined(avs_array_elt(args, Dynamic_peak_detection)) ? avs_as_bool(avs_array_elt(args, Dynamic_peak_detection)) : 1 };
-        params->use_dovi = avs_defined(avs_array_elt(args, Use_dovi)) ? avs_as_bool(avs_array_elt(args, Use_dovi)) : params->src_csp == CSP_DOVI;
-
-        params->render_params = std::make_unique<pl_render_params>(pl_render_default_params);
-        params->render_params->color_map_params = params->colorMapParams.get();
-        params->render_params->peak_detect_params = (peak_detection) ? params->peakDetectParams.get() : nullptr;
-        params->render_params->sigmoid_params = &pl_sigmoid_default_params;
-        params->render_params->dither_params = &pl_dither_default_params;
-        params->render_params->cone_params = nullptr;
-        params->render_params->color_adjustment = nullptr;
-        params->render_params->deband_params = nullptr;
-
-        if (srcIsRGB)
-            params->is_subsampled = 0;
-        else
-            params->is_subsampled = avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U) | avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U);
-
-        params->src_repr = std::make_unique<pl_color_repr>();
-        params->src_repr->bits.sample_depth = 16;
-        params->src_repr->bits.color_depth = 16;
-        params->src_repr->bits.bit_shift = 0;
-
-        params->dst_repr = std::make_unique< pl_color_repr>();
-        params->dst_repr->bits.sample_depth = 16;
-        params->dst_repr->bits.color_depth = 16;
-        params->dst_repr->bits.bit_shift = 0;
-        params->dst_repr->alpha = PL_ALPHA_PREMULTIPLIED;
-
-        if (!srcIsRGB)
-        {
-            params->src_repr->sys = PL_COLOR_SYSTEM_BT_2020_NC;
-            params->dst_repr->levels = PL_COLOR_LEVELS_LIMITED;
-
-            if (params->dst_pl_csp->transfer == PL_COLOR_TRC_BT_1886)
-                params->dst_repr->sys = PL_COLOR_SYSTEM_BT_709;
-            else if (params->dst_pl_csp->transfer == PL_COLOR_TRC_PQ || params->dst_pl_csp->transfer == PL_COLOR_TRC_HLG)
-                params->dst_repr->sys = PL_COLOR_SYSTEM_BT_2020_NC;
-
-            fi->vi.pixel_type = AVS_CS_YUV444P16;
-        }
-        else
-        {
-            params->src_repr->sys = PL_COLOR_SYSTEM_RGB;
-
-            params->dst_repr->levels = PL_COLOR_LEVELS_FULL;
-            params->dst_repr->sys = PL_COLOR_SYSTEM_RGB;
-        }
-
-        params->packed_dst = operator new(fi->vi.width * fi->vi.height * 2 * 3);
-
-        v = avs_new_value_clip(clip);
-
-        fi->user_data = reinterpret_cast<void*>(params);
-        fi->get_frame = tonemap_get_frame;
-        fi->set_cache_hints = tonemap_set_cache_hints;
-        fi->free_filter = free_tonemap;
+        case CSP_HDR10:
+        case CSP_DOVI: *params->src_pl_csp.get() = pl_color_space_hdr10; break;
+        case CSP_HLG: *params->src_pl_csp.get() = pl_color_space_bt2020_hlg; break;
+        default: return set_error(clip, "libplacebo_Tonemap: Invalid source colorspace for tonemapping.");
     }
+
+    params->dst_pl_csp = std::make_unique<pl_color_space>();
+    params->dst_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Dst_csp)) ? avs_as_int(avs_array_elt(args, Dst_csp)) : 0);
+
+    switch (params->dst_csp)
+    {
+        case CSP_SDR: *params->dst_pl_csp.get() = pl_color_space_bt709; break;
+        case CSP_HDR10: *params->dst_pl_csp.get() = pl_color_space_hdr10; break;
+        case CSP_HLG: *params->dst_pl_csp.get() = pl_color_space_bt2020_hlg; break;
+        default: return set_error(clip, "libplacebo_Tonemap: Invalid target colorspace for tonemapping.");
+    }
+
+    if (avs_defined(avs_array_elt(args, Src_max)))
+    {
+        params->original_src_max = avs_as_float(avs_array_elt(args, Src_max));
+        params->src_pl_csp->hdr.max_luma = params->original_src_max;
+    }
+    if (avs_defined(avs_array_elt(args, Src_min)))
+    {
+        params->original_src_min = avs_as_float(avs_array_elt(args, Src_min));
+        params->src_pl_csp->hdr.min_luma = params->original_src_min;
+    }
+
+    pl_color_space_infer(params->src_pl_csp.get());
+
+    if (avs_defined(avs_array_elt(args, Dst_max)))
+        params->dst_pl_csp->hdr.max_luma = avs_as_float(avs_array_elt(args, Dst_max));
+    if (avs_defined(avs_array_elt(args, Dst_min)))
+        params->dst_pl_csp->hdr.min_luma = avs_as_float(avs_array_elt(args, Dst_min));
+
+    pl_color_space_infer(params->dst_pl_csp.get());
+
+    const int peak_detection{ avs_defined(avs_array_elt(args, Dynamic_peak_detection)) ? avs_as_bool(avs_array_elt(args, Dynamic_peak_detection)) : 1 };
+    params->use_dovi = avs_defined(avs_array_elt(args, Use_dovi)) ? avs_as_bool(avs_array_elt(args, Use_dovi)) : params->src_csp == CSP_DOVI;
+
+    params->render_params = std::make_unique<pl_render_params>(pl_render_default_params);
+    params->render_params->color_map_params = params->colorMapParams.get();
+    params->render_params->peak_detect_params = (peak_detection) ? params->peakDetectParams.get() : nullptr;
+    params->render_params->sigmoid_params = &pl_sigmoid_default_params;
+    params->render_params->dither_params = &pl_dither_default_params;
+    params->render_params->cone_params = nullptr;
+    params->render_params->color_adjustment = nullptr;
+    params->render_params->deband_params = nullptr;
+
+    if (srcIsRGB)
+        params->is_subsampled = 0;
+    else
+        params->is_subsampled = avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U) | avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U);
+
+    params->src_repr = std::make_unique<pl_color_repr>();
+    params->src_repr->bits.sample_depth = 16;
+    params->src_repr->bits.color_depth = 16;
+    params->src_repr->bits.bit_shift = 0;
+
+    params->dst_repr = std::make_unique< pl_color_repr>();
+    params->dst_repr->bits.sample_depth = 16;
+    params->dst_repr->bits.color_depth = 16;
+    params->dst_repr->bits.bit_shift = 0;
+    params->dst_repr->alpha = PL_ALPHA_PREMULTIPLIED;
+
+    if (!srcIsRGB)
+    {
+        params->src_repr->sys = PL_COLOR_SYSTEM_BT_2020_NC;
+        params->dst_repr->levels = PL_COLOR_LEVELS_LIMITED;
+
+        if (params->dst_pl_csp->transfer == PL_COLOR_TRC_BT_1886)
+            params->dst_repr->sys = PL_COLOR_SYSTEM_BT_709;
+        else if (params->dst_pl_csp->transfer == PL_COLOR_TRC_PQ || params->dst_pl_csp->transfer == PL_COLOR_TRC_HLG)
+            params->dst_repr->sys = PL_COLOR_SYSTEM_BT_2020_NC;
+
+        fi->vi.pixel_type = AVS_CS_YUV444P16;
+    }
+    else
+    {
+        params->src_repr->sys = PL_COLOR_SYSTEM_RGB;
+
+        params->dst_repr->levels = PL_COLOR_LEVELS_FULL;
+        params->dst_repr->sys = PL_COLOR_SYSTEM_RGB;
+    }
+
+    params->packed_dst = operator new(fi->vi.width * fi->vi.height * 2 * 3);
+
+    AVS_Value v{ avs_new_value_clip(clip) };
+
+    fi->user_data = reinterpret_cast<void*>(params);
+    fi->get_frame = tonemap_get_frame;
+    fi->set_cache_hints = tonemap_set_cache_hints;
+    fi->free_filter = free_tonemap;
 
     avs_release_clip(clip);
 

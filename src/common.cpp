@@ -74,3 +74,70 @@ void avs_libplacebo_uninit(std::unique_ptr<struct priv> p)
     pl_vulkan_destroy(&p->vk);
     pl_log_destroy(&p->log);
 }
+
+AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, std::string name, const int device, const int list_device)
+{
+    VkInstanceCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+
+    uint32_t dev_count{ 0 };
+
+    if (vkCreateInstance(&info, nullptr, &inst))
+    {
+        vkDestroyInstance(inst, nullptr);
+        avs_release_clip(clip);
+
+        return avs_new_value_error((name + ": failed to create instance.").c_str());
+    }
+
+    if (vkEnumeratePhysicalDevices(inst, &dev_count, nullptr))
+    {
+        vkDestroyInstance(inst, nullptr);
+        avs_release_clip(clip);
+
+        return avs_new_value_error((name + ": failed to get devices number.").c_str());
+    }
+
+    if (device < -1 || device > static_cast<int>(dev_count) - 1)
+    {
+        msg = name + ": device must be between -1 and " + std::to_string(dev_count - 1);
+        vkDestroyInstance(inst, nullptr);
+        avs_release_clip(clip);
+
+        return avs_new_value_error(msg.c_str());
+    }
+
+    devices.resize(dev_count);
+
+    if (vkEnumeratePhysicalDevices(inst, &dev_count, devices.data()))
+    {
+        vkDestroyInstance(inst, nullptr);
+        avs_release_clip(clip);
+
+        return avs_new_value_error((name + ": failed to get devices.").c_str());
+    }
+
+    if (list_device)
+    {
+        for (size_t i{ 0 }; i < devices.size(); ++i)
+        {
+            VkPhysicalDeviceProperties properties{};
+            vkGetPhysicalDeviceProperties(devices[i], &properties);
+
+            msg += std::to_string(i) + ": " + std::string(properties.deviceName) + "\n";
+        }
+
+        vkDestroyInstance(inst, nullptr);
+
+        AVS_Value cl{ avs_new_value_clip(clip) };
+        AVS_Value args_[2]{ cl, avs_new_value_string(msg.c_str()) };
+        AVS_Value inv{ avs_invoke(env, "Text", avs_new_value_array(args_, 2), 0) };
+
+        avs_release_value(cl);
+        avs_release_clip(clip);
+
+        return inv;
+    }
+    else
+        return avs_void;
+}
