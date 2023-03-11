@@ -6,7 +6,8 @@
 
 #include "avisynth_c.h"
 
-extern "C" {
+extern "C"
+{
 #include <libplacebo/renderer.h>
 #include <libplacebo/dispatch.h>
 #include <libplacebo/shaders.h>
@@ -19,29 +20,6 @@ void avs_libplacebo_uninit(std::unique_ptr<struct priv> p);
 
 AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, std::string name, const int device, const int list_device);
 
-struct format
-{
-    int num_comps;
-    int bitdepth;
-};
-
-struct plane
-{
-    int subx, suby; // subsampling shift
-    struct format fmt;
-    size_t stride;
-    void* data;
-};
-
-#define MAX_PLANES 4
-
-struct image
-{
-    int width, height;
-    int num_planes;
-    struct plane planes[MAX_PLANES];
-};
-
 struct priv
 {
     pl_log log;
@@ -51,8 +29,8 @@ struct priv
     pl_shader_obj dither_state;
 
     pl_renderer rr;
-    pl_tex tex_in[MAX_PLANES];
-    pl_tex tex_out[MAX_PLANES];
+    pl_tex tex_in[4];
+    pl_tex tex_out[4];
 };
 
 AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
@@ -60,6 +38,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
 AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
 
+[[maybe_unused]]
 static AVS_FORCEINLINE AVS_Value set_error(AVS_Clip* clip, const char* error_message)
 {
     avs_release_clip(clip);

@@ -62,7 +62,7 @@ error:
 
 void avs_libplacebo_uninit(std::unique_ptr<struct priv> p)
 {
-    for (int i{ 0 }; i < MAX_PLANES; ++i)
+    for (int i{ 0 }; i < 4; ++i)
     {
         pl_tex_destroy(p->gpu, &p->tex_in[i]);
         pl_tex_destroy(p->gpu, &p->tex_out[i]);

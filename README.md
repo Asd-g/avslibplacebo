@@ -260,14 +260,15 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     7: GAMMA24 (Pure power gamma 2.4)\
     8: GAMMA26 (Pure power gamma 2.6)\
     9: GAMMA28 (Pure power gamma 2.8)\
-    10: PRO_PHOTO (ProPhoto RGB (ROMM))
+    10: PRO_PHOTO (ProPhoto RGB (ROMM))\
+    11: ST428 (Digital Cinema Distribution Master (XYZ))
 
     High dynamic range:\
-    11: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
-    12: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
-    13: V_LOG (Panasonic V-Log (VARICAM))\
-    14: S_LOG1 (Sony S-Log1)\
-    15: S_LOG2 (Sony S-Log2)
+    12: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
+    13: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
+    14: V_LOG (Panasonic V-Log (VARICAM))\
+    15: S_LOG1 (Sony S-Log1)\
+    16: S_LOG2 (Sony S-Log2)
 
     Default: 1.
 
@@ -363,14 +364,15 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     7: GAMMA24 (Pure power gamma 2.4)\
     8: GAMMA26 (Pure power gamma 2.6)\
     9: GAMMA28 (Pure power gamma 2.8)\
-    10: PRO_PHOTO (ProPhoto RGB (ROMM))
+    10: PRO_PHOTO (ProPhoto RGB (ROMM))\
+    11: ST428 (Digital Cinema Distribution Master (XYZ))
 
     High dynamic range:\
-    11: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
-    12: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
-    13: V_LOG (Panasonic V-Log (VARICAM))\
-    14: S_LOG1 (Sony S-Log1)\
-    15: S_LOG2 (Sony S-Log2)
+    12: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
+    13: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
+    14: V_LOG (Panasonic V-Log (VARICAM))\
+    15: S_LOG1 (Sony S-Log1)\
+    16: S_LOG2 (Sony S-Log2)
 
     Default: 1.
 
@@ -535,6 +537,12 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     To disable this logic entirely, set either one to a negative value.\
     Default: scene_threshold_low = 5.5; scene_threshold_high = 10.0
 
+- percentile\
+    Which percentile of the input image brightness histogram to consider as the true peak of the scene.\
+    If this is set to 100 (or 0), the brightest pixel is measured. Otherwise, the top of the frequency distribution is progressively cut off.\
+    Setting this too low will cause clipping of very bright details, but can improve the dynamic brightness range of scenes with very bright isolated highlights.\
+    The default of 99.995% is very conservative and should cause no major issues in typical content.
+
 - intent\
     The rendering intent to use for gamut mapping.\
     0: PERCEPTUAL\
@@ -557,32 +565,43 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     1: clip (Performs no tone-mapping, just clips out-of-range colors.\
     Retains perfect color accuracy for in-range colors but completely destroys out-of-range information.\
     Does not perform any black point adaptation.)\
-    2: bt2390 (EETF from the ITU-R Report BT.2390, a hermite spline roll-off with linear segment.\
+    2: st2094_40 (EETF from SMPTE ST 2094-40 Annex B, which uses the provided OOTF based on Bezier curves to perform tone-mapping.\
+    The OOTF used is adjusted based on the ratio between the targeted and actual display peak luminances.\
+    In the absence of HDR10+ metadata, falls back to a simple constant bezier curve with tunable knee point.\
+    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.7.)\
+    3: st2094_10 (EETF from SMPTE ST 2094-10 Annex B.2, which takes into account the input signal average luminance in addition to the maximum/minimum.\
+    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.5.\
+    Note: This does *not* currently include the subjective gain/offset/gamma controls defined in Annex B.3.)\
+    4: bt2390 (EETF from the ITU-R Report BT.2390, a hermite spline roll-off with linear segment.\
     The knee point offset is configurable. Note that this defaults to 1.0, rather than the value of 0.5 from the ITU-R spec.)\
-    3: bt2446a (EETF from ITU-R Report BT.2446, method A.\
+    5: bt2446a (EETF from ITU-R Report BT.2446, method A.\
     Can be used for both forward and inverse tone mapping. Not configurable.)\
-    4: spline (Simple spline consisting of two polynomials, joined by a single pivot point.\
-    The `tone_mapping_param` gives the pivot point (in PQ space), defaulting to 0.30.\
-    Can be used for both forward and inverse tone mapping.)\
-    5: reinhard (Simple non-linear, global tone mapping algorithm.\
+    6: spline (Simple spline consisting of two polynomials, joined by a single pivot point.\
+    Simple spline consisting of two polynomials, joined by a single pivot point, which is tuned based on the source scene average brightness (taking into account HDR10+ metadata if available).\
+    The `tone_mapping_param` can be used to tune the desired subjective contrast characteristics.\
+    Higher values make the curve steeper (closer to `clip`), preserving midtones at the cost of losing shadow/highlight details, while lower values make the curve shallower (closer to `linear`), preserving highlights at the cost of losing midtone contrast.\
+    Values above 1.0 are possible, resulting in an output with more contrast than the input.\
+    The default value is 0.5.\
+    This function can be used for both forward and inverse tone mapping.
+    7: reinhard (Simple non-linear, global tone mapping algorithm.\
     Named after Erik Reinhard.\
     The `tone_mapping_param` specifies the local contrast coefficient at the display peak.\
     Essentially, a value of param=0.5 implies that the reference white will be about half as bright as when clipping.\
     Defaults to 0.5, which results in the simplest formulation of this function.)\
-    6: mobius (Generalization of the reinhard tone mapping algorithm to support an additional linear slope near black.\
+    8: mobius (Generalization of the reinhard tone mapping algorithm to support an additional linear slope near black.\
     The tone mapping `tone_mapping_param` indicates the trade-off between the linear section and the non-linear section.\
     Essentially, for param=0.5, every color value below 0.5 will be mapped linearly, with the higher values being non-linearly tone mapped.\
     Values near 1.0 make this curve behave like `clip`, and values near 0.0 make this curve behave like `reinhard`.\
     The default value is 0.3, which provides a good balance between colorimetric accuracy and preserving out-of-gamut details.\
     The name is derived from its function shape (ax+b)/(cx+d), which is known as a Möbius transformation in mathematics.)\
-    7: hable (Piece-wise, filmic tone-mapping algorithm developed by John Hable for use in Uncharted 2, inspired by a similar tone-mapping algorithm used by Kodak.\
+    9: hable (Piece-wise, filmic tone-mapping algorithm developed by John Hable for use in Uncharted 2, inspired by a similar tone-mapping algorithm used by Kodak.\
     Popularized by its use in video games with HDR rendering.\
     Preserves both dark and bright details very well, but comes with the drawback of changing the average brightness quite significantly.\
     This is sort of similar to `reinhard` with `tone_mapping_param` 0.24.)\
-    8: gamma (Fits a gamma (power) function to transfer between the source and target color spaces, effectively resulting in a perceptual hard-knee joining two roughly linear sections.\
+    10: gamma (Fits a gamma (power) function to transfer between the source and target color spaces, effectively resulting in a perceptual hard-knee joining two roughly linear sections.\
     This preserves details at all scales fairly accurately, but can result in an image with a muted or dull appearance.\
     The `tone_mapping_param` is used as the cutoff point, defaulting to 0.5.)\
-    9: linear (Linearly stretches the input range to the output range, in PQ space.\
+    11: linear (Linearly stretches the input range to the output range, in PQ space.\
     This will preserve all details accurately, but results in a significantly different average brightness.\
     Can be used for inverse tone-mapping in addition to regular tone-mapping.\
     The parameter can be used as an additional linear gain coefficient (defaulting to 1.0).)\
@@ -607,6 +626,24 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     May help to improve the appearance of very bright, monochromatic highlights.\
     Default: 0.04.
 
+- metadata\
+    Data source to use when tone-mapping.\
+    Setting this to a specific value allows overriding the default metadata preference logic.\
+    0: ANY\
+    1: NONE\
+    2: HDR10 (HDR10 static mastering display metadata)\
+    3: HDR10PLUS (HDR10+ dynamic metadata)\
+    4: CIE_Y (CIE Y derived dynamic luminance metadata)
+
+- visualize_lut\
+    Visualize the tone-mapping curve / LUT. (PQ-PQ graph)\
+    Default: False.
+
+- show_clipping\
+    Graphically highlight hard-clipped pixels during tone-mapping (i.e. pixels that exceed the claimed source luminance range).\
+    Note that the difference between this and `gamut_mode=1` is that the latter only shows out-of-gamut colors (that are inside the monitor brightness range), while this shows out-of-range colors (regardless of whether or not they're in-gamut).\
+    Default: False.
+
 - use_dovi\
     Whether to use the Dolby Vision RPU for ST2086 metadata.\
     Defaults to true when tonemapping from Dolby Vision.
@@ -629,18 +666,16 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Requirements:
         - Clang-cl (https://github.com/llvm/llvm-project/releases)
         - Vulkan SDK (https://vulkan.lunarg.com/sdk/home#windows)
-        - libp2p (https://github.com/sekrit-twc/libp2p)
         - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
         - libplacebo (https://gitlab.com/uvz/libplacebo)
     ```
     ```
     Steps:
         Install Vulkan SDk.
-        Build libp2p.
         Build dolby_vision.
         Building libplacebo:
-            set LIB=%LIB%;C:\VulkanSDK\1.3.224.1\Lib
-            meson build -Dvulkan-registry=C:\VulkanSDK\1.3.224.1\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled
+            set LIB=%LIB%;C:\VulkanSDK\1.3.239.0\Lib
+            meson build -Dvulkan-registry=C:\VulkanSDK\1.3.239.0\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled
         Use solution files to build avs_libplacebo.
     ```
 
@@ -648,7 +683,6 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     ```
     Requirements:
         - Vulkan lib
-        - libp2p (https://github.com/sekrit-twc/libp2p)
         - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
         - libplacebo (https://code.videolan.org/videolan/libplacebo)
         - AviSynth lib

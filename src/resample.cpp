@@ -27,17 +27,15 @@ struct resample
 
 static int resample_do_plane(priv& p, resample& data, const int w, const int h, const float sx, const float sy, const int planeIdx)
 {
-    resample* d{ &data };
-
     pl_shader sh{ pl_dispatch_begin(p.dp) };
     pl_tex sample_fbo{};
     pl_tex sep_fbo{};
 
-    pl_sample_filter_params sample_params{ *d->sample_params.get() };
-    sample_params.lut = &d->lut;
+    pl_sample_filter_params sample_params{ *data.sample_params.get() };
+    sample_params.lut = &data.lut;
 
     pl_color_space cs{};
-    cs.transfer = d->trc;
+    cs.transfer = data.trc;
 
     pl_sample_src src{};
     src.tex = p.tex_in[0];
@@ -59,11 +57,11 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
 
     pl_shader_sample_direct(ish, &src);
 
-    if (d->linear)
+    if (data.linear)
         pl_shader_linearize(ish, &cs);
 
-    if (d->sigmoid_params.get())
-        pl_shader_sigmoidize(ish, d->sigmoid_params.get());
+    if (data.sigmoid_params.get())
+        pl_shader_sigmoidize(ish, data.sigmoid_params.get());
 
     pl_dispatch_params dp{};
     dp.target = sample_fbo;
@@ -78,16 +76,16 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
 
     const float src_w{ [&]()
     {
-        if (d->src_width > -1.0f)
-            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_width / d->subw) : d->src_width;
+        if (data.src_width > -1.0f)
+            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (data.src_width / data.subw) : data.src_width;
         else
             return static_cast<float>(p.tex_in[0]->params.w);
     }() };
 
     const float src_h{ [&]()
     {
-        if (d->src_height > -1.0f)
-            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_height / d->subh) : d->src_height;
+        if (data.src_height > -1.0f)
+            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (data.src_height / data.subh) : data.src_height;
         else
             return static_cast<float>(p.tex_in[0]->params.h);
     }() };
@@ -99,7 +97,7 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
     src.new_h = h;
     src.new_w = w;
 
-    if (d->sample_params->filter.polar)
+    if (data.sample_params->filter.polar)
     {
         if (!pl_shader_sample_polar(sh, &src, &sample_params))
             return 3;
@@ -114,42 +112,33 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
             return 4;
         }
 
-        pl_sample_src src2{ src };
+        tp.h = src.new_h;
 
-        pl_tex_params tp1{};
-        tp1.w = src.tex->params.w;
-        tp1.h = src.new_h;
-        tp1.renderable = true;
-        tp1.sampleable = true;
-        tp1.format = src.tex->params.format;
-
-        if (!pl_tex_recreate(p.gpu, &sep_fbo, &tp1))
+        if (!pl_tex_recreate(p.gpu, &sep_fbo, &tp))
             return 5;
 
-        src2.tex = sep_fbo;
+        src.tex = sep_fbo;
 
-        pl_dispatch_params dp1{};
-        dp1.target = sep_fbo;
-        dp1.shader = &tsh;
+        dp.target = sep_fbo;
+        dp.shader = &tsh;
 
-        if (!pl_dispatch_finish(p.dp, &dp1))
+        if (!pl_dispatch_finish(p.dp, &dp))
             return 6;
 
-        if (!pl_shader_sample_ortho(sh, PL_SEP_HORIZ, &src2, &sample_params))
+        if (!pl_shader_sample_ortho(sh, PL_SEP_HORIZ, &src, &sample_params))
             return 7;
     }
 
-    if (d->sigmoid_params.get())
-        pl_shader_unsigmoidize(sh, d->sigmoid_params.get());
+    if (data.sigmoid_params.get())
+        pl_shader_unsigmoidize(sh, data.sigmoid_params.get());
 
-    if (d->linear)
+    if (data.linear)
         pl_shader_delinearize(sh, &cs);
 
-    pl_dispatch_params dp2{};
-    dp2.target = p.tex_out[0];
-    dp2.shader = &sh;
+    dp.target = p.tex_out[0];
+    dp.shader = &sh;
 
-    if (!pl_dispatch_finish(p.dp, &dp2))
+    if (!pl_dispatch_finish(p.dp, &dp))
         return 8;
 
     pl_tex_destroy(p.gpu, &sep_fbo);
@@ -158,11 +147,9 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
     return 0;
 }
 
-static int resample_reconfig(priv& priv_, const pl_plane_data& data, const int w, const int h)
+static int resample_reconfig(priv& p, const pl_plane_data& data, const int w, const int h)
 {
-    priv* p{ &priv_ };
-
-    pl_fmt fmt{ pl_plane_find_fmt(p->gpu, nullptr, &data) };
+    pl_fmt fmt{ pl_plane_find_fmt(p.gpu, nullptr, &data) };
     if (!fmt)
         return -1;
 
@@ -173,17 +160,17 @@ static int resample_reconfig(priv& priv_, const pl_plane_data& data, const int w
     t_r.sampleable = true;
     t_r.host_writable = true;
 
-    if (pl_tex_recreate(p->gpu, &p->tex_in[0], &t_r))
+    if (pl_tex_recreate(p.gpu, &p.tex_in[0], &t_r))
     {
-        pl_tex_params t_r1{};
-        t_r1.w = w;
-        t_r1.h = h;
-        t_r1.format = fmt;
-        t_r1.renderable = true;
-        t_r1.host_readable = true;
-        t_r1.storable = true;
+        t_r.w = w;
+        t_r.h = h;
+        t_r.sampleable = false;
+        t_r.host_writable = false;
+        t_r.renderable = true;
+        t_r.host_readable = true;
+        t_r.storable = true;
 
-        if (!pl_tex_recreate(p->gpu, &p->tex_out[0], &t_r1))
+        if (!pl_tex_recreate(p.gpu, &p.tex_out[0], &t_r))
             return -2;
     }
     else
@@ -192,31 +179,28 @@ static int resample_reconfig(priv& priv_, const pl_plane_data& data, const int w
     return 0;
 }
 
-static int resample_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& src, resample& d, const int w, const int h, const float sx, const float sy, const int planeIdx)
+static int resample_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& src, resample& d, const int w, const int h, const float sx, const float sy, const int planeIdx)
 {
-    priv* p{ &priv_ };
-
     // Upload planes
     pl_tex_transfer_params ttr{};
-    ttr.tex = p->tex_in[0];
+    ttr.tex = p.tex_in[0];
     ttr.row_pitch = src.row_stride;
     ttr.ptr = const_cast<void*>(src.pixels);
 
-    if (!pl_tex_upload(p->gpu, &ttr))
+    if (!pl_tex_upload(p.gpu, &ttr))
         return -1;
 
     // Process plane
-    const int proc{ resample_do_plane(*p, d, w, h, sx, sy, planeIdx) };
+    const int proc{ resample_do_plane(p, d, w, h, sx, sy, planeIdx) };
     if (proc)
         return proc;
 
-    pl_tex_transfer_params ttr1{};
-    ttr1.tex = p->tex_out[0];
-    ttr1.row_pitch = avs_get_pitch_p(dst, planeIdx);
-    ttr1.ptr = reinterpret_cast<void*>(avs_get_write_ptr_p(dst, planeIdx));
+    ttr.tex = p.tex_out[0];
+    ttr.row_pitch = avs_get_pitch_p(dst, planeIdx);
+    ttr.ptr = reinterpret_cast<void*>(avs_get_write_ptr_p(dst, planeIdx));
 
     // Download planes
-    if (!pl_tex_download(p->gpu, &ttr1))
+    if (!pl_tex_download(p.gpu, &ttr))
         return -3;
 
     return 0;

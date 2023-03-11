@@ -1,3 +1,15 @@
+##### 1.2.0:
+    Shader/Tonemap: added trc ST428.
+    Tonemap: added parameters percentile, metadata, visualize_lut, show_clipping.
+    Tonemap: added tone_mapping_function st2094_40, st2094_10.
+    Shader/Tonemap: improved speed. (based on https://github.com/Lypheo/vs-placebo/commit/09075cf2a3768b7c87903bb23640916b0b3b68cc)
+    Tonemap: added support for libdovi 3. (based on https://github.com/Lypheo/vs-placebo/commit/f65161b7dd167b60e7af4670a692c6df3c40de6e)
+    Removed libp2p dependency.
+    Tonemap: fixed wrong levels when output is SDR.
+    Tonemap: remove HDR frame props when output is SDR.
+    Tonemap: added support for libplacebo v5.264.0. (based on https://github.com/Lypheo/vs-placebo/commit/4a42255c880572d75c8b50b69b784a67fd93e241)
+    Shader: removed shader_param limit.
+
 ##### 1.1.5:
     libplacebo_Tonemap: fixed `dst_min`.
 

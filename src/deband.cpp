@@ -18,13 +18,11 @@ struct deband
 
 static bool deband_do_plane(priv& p, deband& data, const int planeIdx) noexcept
 {
-    deband* d{ &data };
-
     pl_shader sh{ pl_dispatch_begin(p.dp) };
 
     pl_shader_params sh_p{};
     sh_p.gpu = p.gpu;
-    sh_p.index = d->frame_index++;
+    sh_p.index = data.frame_index++;
 
     pl_shader_reset(sh, &sh_p);
 
@@ -32,10 +30,10 @@ static bool deband_do_plane(priv& p, deband& data, const int planeIdx) noexcept
     src.tex = p.tex_in[0];
 
     pl_shader_deband(sh, &src, ((planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) &&
-        d->deband_params1) ? d->deband_params1.get() : d->deband_params.get());
+        data.deband_params1) ? data.deband_params1.get() : data.deband_params.get());
 
-    if (d->dither)
-        pl_shader_dither(sh, p.tex_out[0]->params.format->component_depth[0], &p.dither_state, d->dither_params.get());
+    if (data.dither)
+        pl_shader_dither(sh, p.tex_out[0]->params.format->component_depth[0], &p.dither_state, data.dither_params.get());
 
     pl_dispatch_params d_p{};
     d_p.target = p.tex_out[0];
@@ -44,11 +42,9 @@ static bool deband_do_plane(priv& p, deband& data, const int planeIdx) noexcept
     return pl_dispatch_finish(p.dp, &d_p);
 }
 
-static int deband_reconfig(priv& priv_, const pl_plane_data& data, AVS_VideoFrame* dst, const int planeIdx)
+static int deband_reconfig(priv& p, const pl_plane_data& data, AVS_VideoFrame* dst, const int planeIdx)
 {
-    priv* p{ &priv_ };
-
-    pl_fmt fmt{ pl_plane_find_fmt(p->gpu, nullptr, &data) };
+    pl_fmt fmt{ pl_plane_find_fmt(p.gpu, nullptr, &data) };
     if (!fmt)
         return -1;
 
@@ -59,16 +55,16 @@ static int deband_reconfig(priv& priv_, const pl_plane_data& data, AVS_VideoFram
     t_r.sampleable = true;
     t_r.host_writable = true;
 
-    if (pl_tex_recreate(p->gpu, &p->tex_in[0], &t_r))
+    if (pl_tex_recreate(p.gpu, &p.tex_in[0], &t_r))
     {
-        pl_tex_params t_r1{};
-        t_r1.w = avs_get_row_size_p(dst, planeIdx) / data.pixel_stride;
-        t_r1.h = avs_get_height_p(dst, planeIdx);
-        t_r1.format = fmt;
-        t_r1.renderable = true;
-        t_r1.host_readable = true;
+        t_r.w = avs_get_row_size_p(dst, planeIdx) / data.pixel_stride;
+        t_r.h = avs_get_height_p(dst, planeIdx);
+        t_r.sampleable = false;
+        t_r.host_writable = false;
+        t_r.renderable = true;
+        t_r.host_readable = true;
 
-        if (!pl_tex_recreate(p->gpu, &p->tex_out[0], &t_r1))
+        if (!pl_tex_recreate(p.gpu, &p.tex_out[0], &t_r))
             return -2;
     }
     else
@@ -77,30 +73,27 @@ static int deband_reconfig(priv& priv_, const pl_plane_data& data, AVS_VideoFram
     return 0;
 }
 
-static int deband_filter(priv& priv_, AVS_VideoFrame* dst, const pl_plane_data& data, deband& d, const int planeIdx)
+static int deband_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& data, deband& d, const int planeIdx)
 {
-    priv* p{ &priv_ };
-
     // Upload planes
     pl_tex_transfer_params ttr{};
-    ttr.tex = p->tex_in[0];
+    ttr.tex = p.tex_in[0];
     ttr.row_pitch = data.row_stride;
     ttr.ptr = const_cast<void*>(data.pixels);
 
-    if (!pl_tex_upload(p->gpu, &ttr))
+    if (!pl_tex_upload(p.gpu, &ttr))
         return -1;
 
     // Process plane
-    if (!deband_do_plane(*p, d, planeIdx))
+    if (!deband_do_plane(p, d, planeIdx))
         return -2;
 
-    pl_tex_transfer_params ttr1{};
-    ttr1.tex = p->tex_out[0];
-    ttr1.row_pitch = avs_get_pitch_p(dst, planeIdx);
-    ttr1.ptr = reinterpret_cast<void*>(avs_get_write_ptr_p(dst, planeIdx));
+    ttr.tex = p.tex_out[0];
+    ttr.row_pitch = avs_get_pitch_p(dst, planeIdx);
+    ttr.ptr = reinterpret_cast<void*>(avs_get_write_ptr_p(dst, planeIdx));
 
     // Download planes
-    if (!pl_tex_download(p->gpu, &ttr1))
+    if (!pl_tex_download(p.gpu, &ttr))
         return -3;
 
     return 0;

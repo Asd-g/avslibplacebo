@@ -1,11 +1,10 @@
 #include <mutex>
 
 #include "avs_libplacebo.h"
-#include "p2p_api.h"
 
-extern "C" {
+extern "C"
 #include "libdovi/rpu_parser.h"
-}
+
 
 static std::mutex mtx;
 
@@ -16,9 +15,9 @@ static std::unique_ptr<pl_dovi_metadata> create_dovi_meta(DoviRpuOpaque& rpu, co
         goto done;
 
     {
-        const DoviRpuDataMapping* vdm{ dovi_rpu_get_data_mapping(&rpu) };
-        if (!vdm)
-            goto skip_vdm;
+        const DoviRpuDataMapping* mapping = dovi_rpu_get_data_mapping(&rpu);
+        if (!mapping)
+            goto skip_mapping;
 
         {
             const uint64_t bits{ hdr.bl_bit_depth_minus8 + 8 };
@@ -26,53 +25,60 @@ static std::unique_ptr<pl_dovi_metadata> create_dovi_meta(DoviRpuOpaque& rpu, co
 
             for (int c{ 0 }; c < 3; ++c)
             {
+                const DoviReshapingCurve curve{ mapping->curves[c] };
+
                 pl_dovi_metadata::pl_reshape_data* cmp{ &dovi_meta->comp[c] };
+                cmp->num_pivots = curve.pivots.len;
+                memset(cmp->method, curve.mapping_idc, sizeof(cmp->method));
+
                 uint16_t pivot{ 0 };
-                cmp->num_pivots = hdr.num_pivots_minus_2[c] + 2;
                 for (int pivot_idx{ 0 }; pivot_idx < cmp->num_pivots; ++pivot_idx)
                 {
-                    pivot += hdr.pred_pivot_value[c].data[pivot_idx];
+                    pivot += curve.pivots.data[pivot_idx];
                     cmp->pivots[pivot_idx] = static_cast<float>(pivot) / ((1 << bits) - 1);
                 }
 
                 for (int i{ 0 }; i < cmp->num_pivots - 1; ++i)
                 {
                     memset(cmp->poly_coeffs[i], 0, sizeof(cmp->poly_coeffs[i]));
-                    cmp->method[i] = vdm->mapping_idc[c].data[i];
 
-                    switch (cmp->method[i])
+                    if (curve.polynomial)
                     {
-                        case 0: // polynomial
-                            for (int k{ 0 }; k <= vdm->poly_order_minus1[c].data[i] + 1; ++k)
+                        const DoviPolynomialCurve* poly_curve = curve.polynomial;
+
+                        for (int k{ 0 }; k <= poly_curve->poly_order_minus1.data[i] + 1; ++k)
+                        {
+                            int64_t ipart{ poly_curve->poly_coef_int.list[i]->data[k] };
+                            uint64_t fpart{ poly_curve->poly_coef.list[i]->data[k] };
+                            cmp->poly_coeffs[i][k] = ipart + scale * fpart;
+                        }
+                    }
+                    else if (curve.mmr)
+                    {
+                        const DoviMMRCurve* mmr_curve = curve.mmr;
+
+                        int64_t ipart{ mmr_curve->mmr_constant_int.data[i] };
+                        uint64_t fpart{ mmr_curve->mmr_constant.data[i] };
+                        cmp->mmr_constant[i] = ipart + scale * fpart;
+                        cmp->mmr_order[i] = mmr_curve->mmr_order_minus1.data[i] + 1;
+
+                        for (int j{ 0 }; j < cmp->mmr_order[i]; ++j)
+                        {
+                            for (int k{ 0 }; k < 7; ++k)
                             {
-                                int64_t ipart{ vdm->poly_coef_int[c].list[i]->data[k] };
-                                uint64_t fpart{ vdm->poly_coef[c].list[i]->data[k] };
-                                cmp->poly_coeffs[i][k] = ipart + scale * fpart;
+                                ipart = mmr_curve->mmr_coef_int.list[i]->list[j]->data[k];
+                                fpart = mmr_curve->mmr_coef.list[i]->list[j]->data[k];
+                                cmp->mmr_coeffs[i][j][k] = ipart + scale * fpart;
                             }
-                            break;
-                        case 1: // MMR
-                            int64_t ipart{ vdm->mmr_constant_int[c].data[i] };
-                            uint64_t fpart{ vdm->mmr_constant[c].data[i] };
-                            cmp->mmr_constant[i] = ipart + scale * fpart;
-                            cmp->mmr_order[i] = vdm->mmr_order_minus1[c].data[i] + 1;
-                            for (int j{ 1 }; j <= cmp->mmr_order[i]; ++j)
-                            {
-                                for (int k{ 0 }; k < 7; ++k)
-                                {
-                                    ipart = vdm->mmr_coef_int[c].list[i]->list[j]->data[k];
-                                    fpart = vdm->mmr_coef[c].list[i]->list[j]->data[k];
-                                    cmp->mmr_coeffs[i][j - 1][k] = ipart + scale * fpart;
-                                }
-                            }
-                            break;
+                        }
                     }
                 }
             }
         }
 
-        dovi_rpu_free_data_mapping(vdm);
+        dovi_rpu_free_data_mapping(mapping);
     }
-skip_vdm:
+skip_mapping:
 
     if (hdr.vdr_dm_metadata_present_flag)
     {
@@ -87,12 +93,12 @@ skip_vdm:
         const int16_t* src{ &dm_data->ycc_to_rgb_coef0 };
         float* dst{ &dovi_meta->nonlinear.m[0][0] };
         for (int i{ 0 }; i < 9; ++i)
-            dst[i] = src[i] / 8192.0;
+            dst[i] = src[i] / 8192.0f;
 
         src = &dm_data->rgb_to_lms_coef0;
         dst = &dovi_meta->linear.m[0][0];
         for (int i{ 0 }; i < 9; ++i)
-            dst[i] = src[i] / 16384.0;
+            dst[i] = src[i] / 16384.0f;
 
         dovi_rpu_free_vdr_dm_data(dm_data);
     }
@@ -131,120 +137,99 @@ struct tonemap
     std::unique_ptr<pl_dovi_metadata> dovi_meta;
 };
 
-static bool tonemap_do_plane(priv& p, tonemap& data, const pl_plane& planes_, const pl_color_repr& src_repr, const pl_color_repr& dst_repr) noexcept
+static bool tonemap_do_plane(priv& p, const tonemap& data, const pl_plane* planes, const pl_color_repr& src_repr, const pl_color_repr& dst_repr) noexcept
 {
-    tonemap* d{ &data };
-    const pl_plane* planes{ &planes_ };
-
     pl_frame img{};
     img.num_planes = 3;
     img.repr = src_repr;
     img.planes[0] = planes[0];
     img.planes[1] = planes[1];
     img.planes[2] = planes[2];
-    img.color = *d->src_pl_csp;
+    img.color = *data.src_pl_csp;
 
-    if (d->is_subsampled)
-        pl_frame_set_chroma_location(&img, d->chromaLocation);
+    if (data.is_subsampled)
+        pl_frame_set_chroma_location(&img, data.chromaLocation);
 
     pl_frame out{};
-    out.num_planes = 1;
+    out.num_planes = 3;
     out.repr = dst_repr;
-    out.color = *d->dst_pl_csp;
+    out.color = *data.dst_pl_csp;
 
     for (int i{ 0 }; i < 3; ++i)
     {
-        out.planes[i].texture = p.tex_out[0];
-        out.planes[i].components = p.tex_out[0]->params.format->num_components;
-        out.planes[i].component_mapping[0] = 0;
-        out.planes[i].component_mapping[1] = 1;
-        out.planes[i].component_mapping[2] = 2;
+        out.planes[i].texture = p.tex_out[i];
+        out.planes[i].components = 1;
+        out.planes[i].component_mapping[0] = i;
     }
 
-    return pl_render_image(p.rr, &img, &out, d->render_params.get());
+    return pl_render_image(p.rr, &img, &out, data.render_params.get());
 }
 
-static int tonemap_reconfig(priv& priv_, const pl_plane_data& data)
+static int tonemap_reconfig(priv& p, const pl_plane_data* data)
 {
-    priv* p{ &priv_ };
-
-    pl_fmt fmt{ pl_plane_find_fmt(p->gpu, nullptr, &data) };
-    if (!fmt)
-        return -1;
-
     for (int i{ 0 }; i < 3; ++i)
     {
+        pl_fmt fmt{ pl_plane_find_fmt(p.gpu, nullptr, &data[i]) };
+        if (!fmt)
+            return -1;
+
         pl_tex_params t_r{};
-        t_r.w = data.width;
-        t_r.h = data.height;
+        t_r.w = data[i].width;
+        t_r.h = data[i].height;
         t_r.format = fmt;
         t_r.sampleable = true;
         t_r.host_writable = true;
 
-        if (!pl_tex_recreate(p->gpu, &p->tex_in[i], &t_r))
+        if (!pl_tex_recreate(p.gpu, &p.tex_in[i], &t_r))
+            return -2;
+
+        pl_plane_data data1{ data[i] };
+        data1.width = data[0].width;
+        data1.height = data[0].height;
+
+        const pl_fmt out{ pl_plane_find_fmt(p.gpu, nullptr, &data1) };
+
+        t_r.w = data->width;
+        t_r.h = data->height;
+        t_r.format = out;
+        t_r.sampleable = false;
+        t_r.host_writable = false;
+        t_r.renderable = true;
+        t_r.host_readable = true;
+
+        if (!pl_tex_recreate(p.gpu, &p.tex_out[i], &t_r))
             return -2;
     }
-
-    pl_plane_data plane_data{};
-    plane_data.type = PL_FMT_UNORM;
-    plane_data.pixel_stride = 6;
-    plane_data.width = 10;
-    plane_data.height = 10;
-    plane_data.row_stride = 60;
-    plane_data.pixel_stride = 6;
-
-    for (int i{ 0 }; i < 3; ++i)
-    {
-        plane_data.component_map[i] = i;
-        plane_data.component_pad[i] = 0;
-        plane_data.component_size[i] = 16;
-    }
-
-    const pl_fmt out{ pl_plane_find_fmt(p->gpu, nullptr, &plane_data) };
-
-    pl_tex_params t_r1{};
-    t_r1.w = data.width;
-    t_r1.h = data.height;
-    t_r1.format = out;
-    t_r1.renderable = true;
-    t_r1.host_readable = true;
-    t_r1.storable = true;
-    t_r1.blit_dst = true;
-
-    if (!pl_tex_recreate(p->gpu, &p->tex_out[0], &t_r1))
-        return -2;
 
     return 0;
 }
 
-static int tonemap_filter(priv& priv_, void* dst, const pl_plane_data& src_, tonemap& d, const pl_color_repr& src_repr, const pl_color_repr& dst_repr)
+static int tonemap_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, const tonemap& d, const pl_color_repr& src_repr, const pl_color_repr& dst_repr, const int dst_stride)
 {
-    priv* p{ &priv_ };
-    const pl_plane_data* src{ &src_ };
-
     // Upload planes
     pl_plane planes[4]{};
 
     for (int i{ 0 }; i < 3; ++i)
     {
-        if (!pl_upload_plane(p->gpu, &planes[i], &p->tex_in[i], &src[i]))
+        if (!pl_upload_plane(p.gpu, &planes[i], &p.tex_in[i], &src[i]))
             return -1;
     }
 
     // Process plane
-    if (!tonemap_do_plane(*p, d, *planes, src_repr, dst_repr))
+    if (!tonemap_do_plane(p, d, planes, src_repr, dst_repr))
         return -2;
 
-    pl_fmt out_fmt = p->tex_out[0]->params.format;
-
     // Download planes
-    pl_tex_transfer_params ttr1{};
-    ttr1.tex = p->tex_out[0];
-    ttr1.row_pitch = (src->row_stride / src->pixel_stride) * out_fmt->texel_size;
-    ttr1.ptr = dst;
+    for (int i{ 0 }; i < 3; ++i)
+    {
+        pl_tex_transfer_params ttr1{};
+        ttr1.tex = p.tex_out[i];
+        ttr1.row_pitch = dst_stride;
+        ttr1.buf = dst[i];
 
-    if (!pl_tex_download(p->gpu, &ttr1))
-        return -3;
+        if (!pl_tex_download(p.gpu, &ttr1))
+            return -3;
+    }
 
     return 0;
 }
@@ -253,12 +238,29 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 {
     tonemap* d{ reinterpret_cast<tonemap*>(fi->user_data) };
 
-    const char* ErrorText{ 0 };
     AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
     if (!src)
         return nullptr;
 
     AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
+
+    const auto error{ [&](const std::string msg, pl_buf* dst_buf)
+        {
+            avs_release_video_frame(src);
+            avs_release_video_frame(dst);
+
+            if (dst_buf)
+            {
+                for (int i{ 0 }; i < 3; ++i)
+                    pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
+            }
+
+            d->msg = msg;
+            fi->error = d->msg.c_str();
+
+            return nullptr;
+        }
+    };
 
     int err;
     const AVS_Map* props{ avs_get_frame_props_ro(fi->env, src) };
@@ -287,8 +289,6 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
         d->src_pl_csp->hdr.max_luma = avs_prop_get_float(fi->env, props, "MasteringDisplayMaxLuminance", 0, &err);
     if (d->original_src_min <= 0)
         d->src_pl_csp->hdr.min_luma = avs_prop_get_float(fi->env, props, "MasteringDisplayMinLuminance", 0, &err);
-
-    pl_color_space_infer(d->src_pl_csp.get());
 
     const double* primariesX{ avs_prop_get_float_array(fi->env, props, "MasteringDisplayPrimariesX", &err) };
     const double* primariesY{ avs_prop_get_float_array(fi->env, props, "MasteringDisplayPrimariesY", &err) };
@@ -333,63 +333,66 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
                 if (doviRpu && doviRpuSize)
                 {
-                    // fprintf(stderr, "Got Dolby Vision RPU, size %"PRIi64" at %"PRIxPTR"\n", doviRpuSize, (uintptr_t) doviRpu);
-
                     DoviRpuOpaque* rpu{ dovi_parse_unspec62_nalu(doviRpu, doviRpuSize) };
                     const DoviRpuDataHeader* header{ dovi_rpu_get_header(rpu) };
 
                     if (!header)
                     {
-                        d->msg = "libplacebo_Tonemap: failed parsing RPU: " + std::string(dovi_rpu_get_error(rpu));
-                        ErrorText = d->msg.c_str();
+                        dovi_rpu_free(rpu);
+                        return error("libplacebo_Tonemap: failed parsing RPU: " + std::string(dovi_rpu_get_error(rpu)), nullptr);
                     }
                     else
                     {
                         dovi_profile = header->guessed_profile;
-
                         d->dovi_meta = create_dovi_meta(*rpu, *header);
                         dovi_rpu_free_header(header);
                     }
 
-                    if (!ErrorText)
+                    // Profile 5, 7 or 8 mapping
+                    d->src_repr->sys = PL_COLOR_SYSTEM_DOLBYVISION;
+                    d->src_repr->dovi = d->dovi_meta.get();
+
+                    if (dovi_profile == 5)
+                        d->dst_repr->levels = PL_COLOR_LEVELS_FULL;
+
+                    // Update mastering display from RPU
+                    if (header->vdr_dm_metadata_present_flag)
                     {
-                        // Profile 5, 7 or 8 mapping
-                        d->src_repr->sys = PL_COLOR_SYSTEM_DOLBYVISION;
-                        d->src_repr->dovi = d->dovi_meta.get();
+                        const DoviVdrDmData* vdr_dm_data{ dovi_rpu_get_vdr_dm_data(rpu) };
 
-                        if (dovi_profile == 5)
-                            d->dst_repr->levels = PL_COLOR_LEVELS_FULL;
+                        // Should avoid changing the source black point when mapping to PQ
+                        // As the source image already has a specific black point,
+                        // and the RPU isn't necessarily ground truth on the actual coded values
 
-                        // Update mastering display from RPU
-                        if (header->vdr_dm_metadata_present_flag)
+                        // Set target black point to the same as source
+                        if (d->dst_csp == CSP_HDR10)
+                            d->dst_pl_csp->hdr.min_luma = d->src_pl_csp->hdr.min_luma;
+                        else
+                            d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
+
+                        d->src_pl_csp->hdr.max_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_max_pq / 4095.0f);
+
+                        if (vdr_dm_data->dm_data.level1)
                         {
-                            const DoviVdrDmData* vdr_dm_data{ dovi_rpu_get_vdr_dm_data(rpu) };
-
-                            // Should avoid changing the source black point when mapping to PQ
-                            // As the source image already has a specific black point,
-                            // and the RPU isn't necessarily ground truth on the actual coded values
-
-                            // Set target black point to the same as source
-                            if (d->dst_csp == CSP_HDR10)
-                                d->dst_pl_csp->hdr.min_luma = d->src_pl_csp->hdr.min_luma;
-                            else
-                                d->src_pl_csp->hdr.min_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_min_pq / 4095.0f);
-
-                            d->src_pl_csp->hdr.max_luma = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, vdr_dm_data->source_max_pq / 4095.0f);
-
-                            if (vdr_dm_data->dm_data.level6)
-                            {
-                                const DoviExtMetadataBlockLevel6* meta{ vdr_dm_data->dm_data.level6 };
-
-                                if (!maxCll || !maxFall)
-                                {
-                                    d->src_pl_csp->hdr.max_cll = meta->max_content_light_level;
-                                    d->src_pl_csp->hdr.max_fall = meta->max_frame_average_light_level;
-                                }
-                            }
-
-                            dovi_rpu_free_vdr_dm_data(vdr_dm_data);
+                            const DoviExtMetadataBlockLevel1* l1{ vdr_dm_data->dm_data.level1 };
+                            d->src_pl_csp->hdr.avg_pq_y = l1->avg_pq / 4095.0f;
+                            d->src_pl_csp->hdr.max_pq_y = l1->max_pq / 4095.0f;
+                            d->src_pl_csp->hdr.scene_avg = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, l1->avg_pq / 4095.0f);
+                            d->src_pl_csp->hdr.scene_max[0] = d->src_pl_csp->hdr.scene_max[1] = d->src_pl_csp->hdr.scene_max[2] = pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, l1->max_pq / 4095.0f);
                         }
+
+                        if (vdr_dm_data->dm_data.level6)
+                        {
+                            const DoviExtMetadataBlockLevel6* meta{ vdr_dm_data->dm_data.level6 };
+
+                            if (!maxCll || !maxFall)
+                            {
+                                d->src_pl_csp->hdr.max_cll = meta->max_content_light_level;
+                                d->src_pl_csp->hdr.max_fall = meta->max_frame_average_light_level;
+                            }
+                        }
+
+                        dovi_rpu_free_vdr_dm_data(vdr_dm_data);
                     }
 
                     dovi_rpu_free(rpu);
@@ -397,112 +400,109 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
             }
         }
         else
-            ErrorText = "libplacebo_Tonemap: DolbyVisionRPU frame property is required for src_csp=3!";
+            return error("libplacebo_Tonemap: DolbyVisionRPU frame property is required for src_csp=3!", nullptr);
     }
 
-    if (!ErrorText)
+    pl_color_space_infer_map(d->src_pl_csp.get(), d->dst_pl_csp.get());
+
+    constexpr int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
+    constexpr int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
+    const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
+    const int dst_stride = ((avs_get_pitch(dst)) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
+    pl_plane_data pl[4]{};
+    pl_buf dst_buf[4]{};
+    pl_buf_params buf_params{};
+    buf_params.size = dst_stride * fi->vi.height;
+    buf_params.host_mapped = true;
+
+    for (int i{ 0 }; i < 3; ++i)
     {
-        constexpr int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
-        constexpr int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
-        const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
-        pl_plane_data pl[3]{};
+        pl[i].type = PL_FMT_UNORM;
+        pl[i].width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
+        pl[i].height = avs_get_height_p(src, planes[i]);
+        pl[i].pixel_stride = 2;
+        pl[i].row_stride = avs_get_pitch_p(src, planes[i]);
+        pl[i].pixels = avs_get_read_ptr_p(src, planes[i]);
+        pl[i].component_size[0] = 16;
+        pl[i].component_pad[0] = 0;
+        pl[i].component_map[0] = i;
 
-        for (int i{ 0 }; i < 3; ++i)
+        dst_buf[i] = pl_buf_create(d->vf->gpu, &buf_params);
+    }
+
+    {
+        std::lock_guard<std::mutex> lck(mtx);
+
+        const int reconf{ tonemap_reconfig(*d->vf.get(), pl) };
+        if (reconf == 0)
         {
-            pl[i].type = PL_FMT_UNORM;
-            pl[i].width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
-            pl[i].height = avs_get_height_p(src, planes[i]);
-            pl[i].pixel_stride = 2;
-            pl[i].row_stride = avs_get_pitch_p(src, planes[i]);
-            pl[i].pixels = avs_get_read_ptr_p(src, planes[i]);
-            pl[i].component_size[0] = 16;
-            pl[i].component_pad[0] = 0;
-            pl[i].component_map[0] = i;
-        }
+            const int filt{ tonemap_filter(*d->vf.get(), dst_buf, pl, *d, *d->src_repr.get(), *d->dst_repr.get(), dst_stride) };
 
-        {
-            std::lock_guard<std::mutex> lck(mtx);
-
-            const int reconf{ tonemap_reconfig(*d->vf.get(), *pl) };
-            if (reconf == 0)
+            if (filt)
             {
-                const int filt{ tonemap_filter(*d->vf.get(), d->packed_dst, *pl, *d, *d->src_repr.get(), *d->dst_repr.get()) };
-
-                if (filt)
+                switch (filt)
                 {
-                    switch (filt)
-                    {
-                        case -1: ErrorText = "libplacebo_Tonemap: failed uploading data to the GPU!"; break;
-                        case -2: ErrorText = "libplacebo_Tonemap: failed processing planes!"; break;
-                        default: ErrorText = "libplacebo_Tonemap: failed downloading data from the GPU!";
-                    }
-                }
-            }
-            else
-            {
-                switch (reconf)
-                {
-                    case -1: ErrorText = "libplacebo_Tonemap: failed configuring filter: no good texture format!"; break;
-                    default: ErrorText = "libplacebo_Tonemap: failed creating GPU textures!";
+                    case -1: return error("libplacebo_Tonemap: failed uploading data to the GPU!", dst_buf);
+                    case -2: return error("libplacebo_Tonemap: failed processing planes!", dst_buf);
+                    default: return error("libplacebo_Tonemap: failed downloading data from the GPU!", dst_buf);
                 }
             }
         }
-
-        if (!ErrorText)
+        else
         {
-            p2p_buffer_param pack_params{};
-            pack_params.width = fi->vi.width;
-            pack_params.height = fi->vi.height;
-            pack_params.packing = p2p_bgr48_le;
-            pack_params.src[0] = d->packed_dst;
-            pack_params.src_stride[0] = fi->vi.width * 2 * 3;
-
-            for (int k = 0; k < 3; ++k)
+            switch (reconf)
             {
-                pack_params.dst[k] = avs_get_write_ptr_p(dst, planes[k]);
-                pack_params.dst_stride[k] = avs_get_pitch_p(dst, planes[k]);
+                case -1: return error("libplacebo_Tonemap: failed configuring filter: no good texture format!", dst_buf);
+                default: return error("libplacebo_Tonemap: failed creating GPU textures!", dst_buf);
             }
-
-            p2p_unpack_frame(&pack_params, 0);
-
-            AVS_Map* props{ avs_get_frame_props_rw(fi->env, dst) };
-            avs_prop_set_int(fi->env, props, "_ColorRange", (d->dst_repr->levels = PL_COLOR_LEVELS_FULL) ? 0 : 1, 0);
-
-            if (d->dst_pl_csp->transfer == PL_COLOR_TRC_BT_1886)
-            {
-                avs_prop_set_int(fi->env, props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 1, 0);
-                avs_prop_set_int(fi->env, props, "_Transfer", 1, 0);
-                avs_prop_set_int(fi->env, props, "_Primaries", 1, 0);
-            }
-            else if (d->dst_pl_csp->transfer == PL_COLOR_TRC_PQ)
-            {
-                avs_prop_set_int(fi->env, props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 9, 0);
-                avs_prop_set_int(fi->env, props, "_Transfer", 16, 0);
-                avs_prop_set_int(fi->env, props, "_Primaries", 9, 0);
-            }
-            else
-            {
-                avs_prop_set_int(fi->env, props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 9, 0);
-                avs_prop_set_int(fi->env, props, "_Transfer", 18, 0);
-                avs_prop_set_int(fi->env, props, "_Primaries", 9, 0);
-            }
-
-            if (avs_num_components(&fi->vi) > 3)
-                avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, AVS_PLANAR_A), avs_get_pitch_p(dst, AVS_PLANAR_A), avs_get_read_ptr_p(src, AVS_PLANAR_A), avs_get_pitch_p(src, AVS_PLANAR_A),
-                    avs_get_row_size_p(src, AVS_PLANAR_A), avs_get_height_p(src, AVS_PLANAR_A));
-
-            avs_release_video_frame(src);
-
-            return dst;
         }
     }
+
+    for (int i{ 0 }; i < 3; ++i)
+    {
+        while (pl_buf_poll(d->vf->gpu, dst_buf[i], 0));
+        memcpy(avs_get_write_ptr_p(dst, planes[i]), dst_buf[i]->data, dst_buf[i]->params.size);
+        pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
+    }
+
+    AVS_Map* dst_props{ avs_get_frame_props_rw(fi->env, dst) };
+    avs_prop_set_int(fi->env, dst_props, "_ColorRange", (d->dst_repr->levels == PL_COLOR_LEVELS_FULL) ? 0 : 1, 0);
+
+    if (d->dst_pl_csp->transfer == PL_COLOR_TRC_BT_1886)
+    {
+        avs_prop_set_int(fi->env, dst_props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 1, 0);
+        avs_prop_set_int(fi->env, dst_props, "_Transfer", 1, 0);
+        avs_prop_set_int(fi->env, dst_props, "_Primaries", 1, 0);
+
+        avs_prop_delete_key(fi->env, dst_props, "ContentLightLevelMax");
+        avs_prop_delete_key(fi->env, dst_props, "ContentLightLevelAverage");
+        avs_prop_delete_key(fi->env, dst_props, "MasteringDisplayMaxLuminance");
+        avs_prop_delete_key(fi->env, dst_props, "MasteringDisplayMinLuminance");
+        avs_prop_delete_key(fi->env, dst_props, "MasteringDisplayPrimariesX");
+        avs_prop_delete_key(fi->env, dst_props, "MasteringDisplayPrimariesY");
+        avs_prop_delete_key(fi->env, dst_props, "MasteringDisplayWhitePointX");
+        avs_prop_delete_key(fi->env, dst_props, "MasteringDisplayWhitePointY");
+    }
+    else if (d->dst_pl_csp->transfer == PL_COLOR_TRC_PQ)
+    {
+        avs_prop_set_int(fi->env, dst_props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 9, 0);
+        avs_prop_set_int(fi->env, dst_props, "_Transfer", 16, 0);
+        avs_prop_set_int(fi->env, dst_props, "_Primaries", 9, 0);
+    }
+    else
+    {
+        avs_prop_set_int(fi->env, dst_props, "_Matrix", (d->dst_repr->sys == PL_COLOR_SYSTEM_RGB) ? 0 : 9, 0);
+        avs_prop_set_int(fi->env, dst_props, "_Transfer", 18, 0);
+        avs_prop_set_int(fi->env, dst_props, "_Primaries", 9, 0);
+    }
+
+    if (avs_num_components(&fi->vi) > 3)
+        avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, AVS_PLANAR_A), avs_get_pitch_p(dst, AVS_PLANAR_A), avs_get_read_ptr_p(src, AVS_PLANAR_A), avs_get_pitch_p(src, AVS_PLANAR_A),
+            avs_get_row_size_p(src, AVS_PLANAR_A), avs_get_height_p(src, AVS_PLANAR_A));
 
     avs_release_video_frame(src);
-    avs_release_video_frame(dst);
 
-    fi->error = ErrorText;
-
-    return nullptr;
+    return dst;
 }
 
 static void AVSC_CC free_tonemap(AVS_FilterInfo* fi)
@@ -523,8 +523,8 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 {
     enum
     {
-        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Intent, Gamut_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
-        Tone_mapping_crosstalk, Use_dovi, Device, List_device
+        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Intent, Gamut_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
+        Tone_mapping_crosstalk, Metadata, Visualize_lut, Show_clipping, Use_dovi, Device, List_device
     };
 
     AVS_FilterInfo* fi;
@@ -588,6 +588,12 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->colorMapParams->tone_mapping_mode = static_cast<pl_tone_map_mode>(avs_as_int(avs_array_elt(args, Tone_mapping_mode)));
     if (avs_defined(avs_array_elt(args, Tone_mapping_crosstalk)))
         params->colorMapParams->tone_mapping_crosstalk = avs_as_float(avs_array_elt(args, Tone_mapping_crosstalk));
+    if (avs_defined(avs_array_elt(args, Metadata)))
+        params->colorMapParams->metadata = static_cast<pl_hdr_metadata_type>(avs_as_int(avs_array_elt(args, Metadata)));
+    if (avs_defined(avs_array_elt(args, Visualize_lut)))
+        params->colorMapParams->visualize_lut = avs_as_bool(avs_array_elt(args, Visualize_lut));
+    if (avs_defined(avs_array_elt(args, Show_clipping)))
+        params->colorMapParams->show_clipping = avs_as_bool(avs_array_elt(args, Show_clipping));
 
     params->peakDetectParams = std::make_unique<pl_peak_detect_params>(pl_peak_detect_default_params);
     if (avs_defined(avs_array_elt(args, Smoothing_period)))
@@ -596,6 +602,8 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->peakDetectParams->scene_threshold_low = avs_as_float(avs_array_elt(args, Scene_threshold_low));
     if (avs_defined(avs_array_elt(args, Scene_threshold_high)))
         params->peakDetectParams->scene_threshold_high = avs_as_float(avs_array_elt(args, Scene_threshold_high));
+    if (avs_defined(avs_array_elt(args, Percentile)))
+        params->peakDetectParams->percentile = avs_as_float(avs_array_elt(args, Percentile));
 
     params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 1);
 
@@ -637,14 +645,10 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->src_pl_csp->hdr.min_luma = params->original_src_min;
     }
 
-    pl_color_space_infer(params->src_pl_csp.get());
-
     if (avs_defined(avs_array_elt(args, Dst_max)))
         params->dst_pl_csp->hdr.max_luma = avs_as_float(avs_array_elt(args, Dst_max));
     if (avs_defined(avs_array_elt(args, Dst_min)))
         params->dst_pl_csp->hdr.min_luma = avs_as_float(avs_array_elt(args, Dst_min));
-
-    pl_color_space_infer(params->dst_pl_csp.get());
 
     const int peak_detection{ avs_defined(avs_array_elt(args, Dynamic_peak_detection)) ? avs_as_bool(avs_array_elt(args, Dynamic_peak_detection)) : 1 };
     params->use_dovi = avs_defined(avs_array_elt(args, Use_dovi)) ? avs_as_bool(avs_array_elt(args, Use_dovi)) : params->src_csp == CSP_DOVI;

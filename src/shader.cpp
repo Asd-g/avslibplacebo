@@ -26,31 +26,28 @@ struct shader
     std::string msg;
 };
 
-static bool shader_do_plane(priv& p, shader& data, const pl_plane& planes_) noexcept
+static bool shader_do_plane(priv& p, const shader& data, const pl_plane* planes) noexcept
 {
-    shader* d{ &data };
-    const pl_plane* pl{ &planes_ };
-
     pl_color_repr crpr{};
     crpr.bits.bit_shift = 0;
     crpr.bits.color_depth = 16;
     crpr.bits.sample_depth = 16;
-    crpr.sys = d->matrix;
-    crpr.levels = d->range;
+    crpr.sys = data.matrix;
+    crpr.levels = data.range;
 
     pl_color_space csp{};
-    csp.transfer = d->trc;
+    csp.transfer = data.trc;
 
     pl_frame img{};
     img.num_planes = 3;
     img.repr = crpr;
-    img.planes[0] = pl[0];
-    img.planes[1] = pl[1];
-    img.planes[2] = pl[2];
+    img.planes[0] = planes[0];
+    img.planes[1] = planes[1];
+    img.planes[2] = planes[2];
     img.color = csp;
 
-    if (d->subw || d->subh)
-        pl_frame_set_chroma_location(&img, d->chromaLocation);
+    if (data.subw || data.subh)
+        pl_frame_set_chroma_location(&img, data.chromaLocation);
 
     pl_frame out{};
     out.num_planes = 3;
@@ -65,97 +62,75 @@ static bool shader_do_plane(priv& p, shader& data, const pl_plane& planes_) noex
     }
 
     pl_render_params renderParams{};
-    renderParams.hooks = &d->shader;
+    renderParams.hooks = &data.shader;
     renderParams.num_hooks = 1;
-    renderParams.sigmoid_params = d->sigmoid_params.get();
-    renderParams.disable_linear_scaling = !d->linear;
-    renderParams.upscaler = &d->sample_params->filter;
-    renderParams.downscaler = &d->sample_params->filter;
-    renderParams.antiringing_strength = d->sample_params->antiring;
-    renderParams.lut_entries = d->sample_params->lut_entries;
-    renderParams.polar_cutoff = d->sample_params->cutoff;
+    renderParams.sigmoid_params = data.sigmoid_params.get();
+    renderParams.disable_linear_scaling = !data.linear;
+    renderParams.upscaler = &data.sample_params->filter;
+    renderParams.downscaler = &data.sample_params->filter;
+    renderParams.antiringing_strength = data.sample_params->antiring;
+    renderParams.lut_entries = data.sample_params->lut_entries;
+    renderParams.polar_cutoff = data.sample_params->cutoff;
 
     return pl_render_image(p.rr, &img, &out, &renderParams);
 }
 
-static int shader_reconfig(priv& priv_, const pl_plane_data& data_, shader& d, const int w, const int h)
+static int shader_reconfig(priv& p, const pl_plane_data* data, const shader& d, const int w, const int h)
 {
-    priv* p{ &priv_ };
-    const pl_plane_data* data{ &data_ };
-
-    pl_fmt fmt[3];
     for (int i{ 0 }; i < 3; ++i)
     {
-        fmt[i] = pl_plane_find_fmt(p->gpu, nullptr, &data[i]);
-        if (!fmt[i])
+        pl_fmt fmt{ pl_plane_find_fmt(p.gpu, nullptr, &data[i]) };
+        if (!fmt)
             return -1;
-    }
 
-    for (int i{ 0 }; i < 3; ++i)
-    {
         pl_tex_params t_r{};
         t_r.w = data[i].width;
         t_r.h = data[i].height;
-        t_r.format = fmt[i];
+        t_r.format = fmt;
         t_r.sampleable = true;
         t_r.host_writable = true;
 
-        if (!pl_tex_recreate(p->gpu, &p->tex_in[i], &t_r))
+        if (!pl_tex_recreate(p.gpu, &p.tex_in[i], &t_r))
             return -2;
-    }
 
-    for (int i{ 0 }; i < 3; ++i)
-    {
-        pl_plane_data plane_data{};
-        plane_data.type = PL_FMT_UNORM;
-        plane_data.component_map[0] = i;
-        plane_data.component_pad[0] = 0;
-        plane_data.component_size[0] = 16;
-        plane_data.pixel_stride = 2;
+        t_r.w = w;
+        t_r.h = h;
+        t_r.sampleable = false;
+        t_r.host_writable = false;
+        t_r.renderable = true;
+        t_r.host_readable = true;
 
-        const pl_fmt out{ pl_plane_find_fmt(p->gpu, nullptr, &plane_data) };
-
-        pl_tex_params t_r1{};
-        t_r1.w = w;
-        t_r1.h = h;
-        t_r1.format = out;
-        t_r1.renderable = true;
-        t_r1.host_readable = true;
-
-        if (!pl_tex_recreate(p->gpu, &p->tex_out[i], &t_r1))
+        if (!pl_tex_recreate(p.gpu, &p.tex_out[i], &t_r))
             return -2;
     }
 
     return 0;
 }
 
-static int shader_filter(priv& priv_, pl_buf* dst, const pl_plane_data& src_, shader& d, const int dst_stride)
+static int shader_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, shader& d, const int dst_stride)
 {
-    priv* p{ &priv_ };
-    const pl_plane_data* src{ &src_ };
-
     // Upload planes
     pl_plane planes[3]{};
 
     for (int i{ 0 }; i < 3; ++i)
     {
-        if (!pl_upload_plane(p->gpu, &planes[i], &p->tex_in[i], &src[i]))
+        if (!pl_upload_plane(p.gpu, &planes[i], &p.tex_in[i], &src[i]))
             return -1;
     }
 
     // Process plane
-    if (!shader_do_plane(*p, d, *planes))
+    if (!shader_do_plane(p, d, planes))
         return -2;
 
     // Download planes
     for (int i{ 0 }; i < 3; ++i)
     {
         pl_tex_transfer_params ttr1{};
-        ttr1.tex = p->tex_out[i];
+        ttr1.tex = p.tex_out[i];
         ttr1.row_pitch = dst_stride;
         ttr1.buf = dst[i];
 
-        if (!pl_tex_download(p->gpu, &ttr1))
+        if (!pl_tex_download(p.gpu, &ttr1))
             return -3;
     }
 
@@ -187,8 +162,8 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
 
     constexpr int planes[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
     const int dst_stride = ((avs_get_pitch(dst)) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
-    pl_plane_data pl[3]{};
-    pl_buf dst_buf[3]{};
+    pl_plane_data pl[4]{};
+    pl_buf dst_buf[4]{};
     pl_buf_params buf_params{};
     buf_params.size = dst_stride * fi->vi.height;
     buf_params.host_mapped = true;
@@ -211,10 +186,10 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
     {
         std::lock_guard<std::mutex> lck(mtx);
 
-        const int reconf{ shader_reconfig(*d->vf.get(), *pl, *d, fi->vi.width, fi->vi.height) };
+        const int reconf{ shader_reconfig(*d->vf.get(), pl, *d, fi->vi.width, fi->vi.height) };
         if (reconf == 0)
         {
-            const int filt{ shader_filter(*d->vf.get(), dst_buf, *pl, *d, dst_stride) };
+            const int filt{ shader_filter(*d->vf.get(), dst_buf, pl, *d, dst_stride) };
 
             if (filt)
             {
