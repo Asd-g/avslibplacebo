@@ -582,7 +582,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Higher values make the curve steeper (closer to `clip`), preserving midtones at the cost of losing shadow/highlight details, while lower values make the curve shallower (closer to `linear`), preserving highlights at the cost of losing midtone contrast.\
     Values above 1.0 are possible, resulting in an output with more contrast than the input.\
     The default value is 0.5.\
-    This function can be used for both forward and inverse tone mapping.
+    This function can be used for both forward and inverse tone mapping.\
     7: reinhard (Simple non-linear, global tone mapping algorithm.\
     Named after Erik Reinhard.\
     The `tone_mapping_param` specifies the local contrast coefficient at the display peak.\
