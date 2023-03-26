@@ -123,8 +123,8 @@ struct tonemap
     enum supported_colorspace dst_csp;
     std::unique_ptr<pl_color_space> src_pl_csp;
     std::unique_ptr<pl_color_space> dst_pl_csp;
-    int64_t original_src_max;
-    int64_t original_src_min;
+    float original_src_max;
+    float original_src_min;
     int is_subsampled;
     enum pl_chroma_location chromaLocation;
     std::string msg;
