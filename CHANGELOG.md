@@ -1,3 +1,8 @@
+##### 1.3.0:
+    Tonemap: added parameters contrast_recovery and contrast_smoothness.
+    Fixed crashing when unsupported Avs+ used by explicitly throwing error.
+    Changed the required Avs+ version.
+
 ##### 1.2.0:
     Resample/Shader: added trc ST428.
     Tonemap: added parameters percentile, metadata, visualize_lut, show_clipping.

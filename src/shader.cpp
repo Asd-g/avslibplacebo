@@ -261,6 +261,10 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
     shader* params{ new shader() };
 
+    AVS_Value avs_ver{ avs_version("libplacebo_Shader", env) };
+    if (avs_is_error(avs_ver))
+        return avs_ver;
+
     if (!avs_is_planar(&fi->vi))
         return set_error(clip, "libplacebo_Shader: clip must be in planar format.");
     if (avs_bits_per_component(&fi->vi) != 16)
@@ -276,7 +280,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
     if (list_device || device > -1)
     {
-        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, std::string("libplacebo_Shader"), device, list_device) };
+        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Shader", device, list_device) };
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
     }

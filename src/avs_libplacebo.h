@@ -8,17 +8,18 @@
 
 extern "C"
 {
-#include <libplacebo/renderer.h>
-#include <libplacebo/dispatch.h>
-#include <libplacebo/shaders.h>
-#include <libplacebo/utils/upload.h>
-#include <libplacebo/vulkan.h>
+#include "libplacebo/dispatch.h"
+#include "libplacebo/renderer.h"
+#include "libplacebo/shaders.h"
+#include "libplacebo/utils/upload.h"
+#include "libplacebo/vulkan.h"
 }
 
 std::unique_ptr<struct priv> avs_libplacebo_init(VkPhysicalDevice device);
 void avs_libplacebo_uninit(std::unique_ptr<struct priv> p);
 
-AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, std::string name, const int device, const int list_device);
+AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, const std::string& name, const int device, const int list_device);
+AVS_Value avs_version(const std::string& name, AVS_ScriptEnvironment* env);
 
 struct priv
 {

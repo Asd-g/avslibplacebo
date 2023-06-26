@@ -204,6 +204,10 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 
     deband* params{ new deband() };
 
+    AVS_Value avs_ver{ avs_version("libplacebo_Deband", env) };
+    if (avs_is_error(avs_ver))
+        return avs_ver;
+
     if (!avs_is_planar(&fi->vi))
         return set_error(clip, "libplacebo_Deband: clip must be in planar format.");
     if (avs_bits_per_component(&fi->vi) != 8 && avs_bits_per_component(&fi->vi) != 16 && avs_bits_per_component(&fi->vi) != 32)
@@ -217,7 +221,7 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 
     if (list_device || device > -1)
     {
-        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, std::string("libplacebo_Deband"), device, list_device) };
+        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Deband", device, list_device) };
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
     }

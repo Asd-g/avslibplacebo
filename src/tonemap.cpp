@@ -524,7 +524,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     enum
     {
         Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Intent, Gamut_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
-        Tone_mapping_crosstalk, Metadata, Visualize_lut, Show_clipping, Use_dovi, Device, List_device
+        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device
     };
 
     AVS_FilterInfo* fi;
@@ -532,6 +532,10 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
     tonemap* params{ new tonemap() };
     const int srcIsRGB{ avs_is_rgb(&fi->vi) };
+
+    AVS_Value avs_ver{ avs_version("libplacebo_Tonemap", env) };
+    if (avs_is_error(avs_ver))
+        return avs_ver;
 
     if (!avs_is_planar(&fi->vi))
         return set_error(clip, "libplacebo_Tonemap: clip must be in planar format.");
@@ -548,7 +552,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
     if (list_device || device > -1)
     {
-        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, std::string("libplacebo_Tonemap"), device, list_device) };
+        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Tonemap", device, list_device) };
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
     }
@@ -578,7 +582,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
     params->colorMapParams->tone_mapping_function = pl_tone_map_functions[function_index];
 
-    params->colorMapParams->tone_mapping_param = avs_defined(avs_array_elt(args, Tone_mapping_param)) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
+    params->colorMapParams->tone_mapping_param = (avs_defined(avs_array_elt(args, Tone_mapping_param))) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
 
     if (avs_defined(avs_array_elt(args, Intent)))
         params->colorMapParams->intent = static_cast<pl_rendering_intent>(avs_as_int(avs_array_elt(args, Intent)));
@@ -594,6 +598,14 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->colorMapParams->visualize_lut = avs_as_bool(avs_array_elt(args, Visualize_lut));
     if (avs_defined(avs_array_elt(args, Show_clipping)))
         params->colorMapParams->show_clipping = avs_as_bool(avs_array_elt(args, Show_clipping));
+
+    params->colorMapParams->contrast_recovery = (avs_defined(avs_array_elt(args, Contrast_recovery))) ? avs_as_float(avs_array_elt(args, Contrast_recovery)) : 0.30f;
+    params->colorMapParams->contrast_smoothness = (avs_defined(avs_array_elt(args, Contrast_smoothness))) ? avs_as_float(avs_array_elt(args, Contrast_smoothness)) : 3.5f;
+
+    if (params->colorMapParams->contrast_recovery < 0.0f)
+        return set_error(clip, "libplacebo_Tonemap: contrast_recovery must be equal to or greater than 0.0f.");
+    if (params->colorMapParams->contrast_smoothness < 0.0f)
+        return set_error(clip, "libplacebo_Tonemap: contrast_smoothness must be equal to or greater than 0.0f.");
 
     params->peakDetectParams = std::make_unique<pl_peak_detect_params>(pl_peak_detect_default_params);
     if (avs_defined(avs_array_elt(args, Smoothing_period)))

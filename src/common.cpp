@@ -75,7 +75,7 @@ void avs_libplacebo_uninit(std::unique_ptr<struct priv> p)
     pl_log_destroy(&p->log);
 }
 
-AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, std::string name, const int device, const int list_device)
+AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, const std::string& name, const int device, const int list_device)
 {
     VkInstanceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -140,4 +140,20 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
     }
     else
         return avs_void;
+}
+
+AVS_Value avs_version(const std::string& name, AVS_ScriptEnvironment* env)
+{
+    if (!avs_check_version(env, 9))
+    {
+        if (avs_check_version(env, 10))
+        {
+            if (avs_get_env_property(env, AVS_AEP_INTERFACE_BUGFIX) < 2)
+                return avs_new_value_error((name + ": AviSynth+ version must be r3688 or later.").c_str());
+        }
+    }
+    else
+        return avs_new_value_error((name + ": AviSynth+ version must be r3688 or later.").c_str());
+
+    return avs_void;
 }

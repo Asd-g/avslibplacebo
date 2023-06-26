@@ -8,7 +8,7 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 
 - Vulkan device
 
-- AviSynth+ r3682 (can be downloaded from [here](https://gitlab.com/uvz/AviSynthPlus-Builds) until official release is uploaded) (r3689 recommended) or later
+- AviSynth+ r3688 (can be downloaded from [here](https://gitlab.com/uvz/AviSynthPlus-Builds) until official release is uploaded) or later
 
 - Microsoft VisualC++ Redistributable Package 2022 (can be downloaded from [here](https://github.com/abbodi1406/vcredist/releases))
 
@@ -496,7 +496,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 #### Usage:
 
 ```
-libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "intent", int "gamut_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device")
+libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "intent", int "gamut_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device")
 ```
 
 #### Parameters:
@@ -634,6 +634,19 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     2: HDR10 (HDR10 static mastering display metadata)\
     3: HDR10PLUS (HDR10+ dynamic metadata)\
     4: CIE_Y (CIE Y derived dynamic luminance metadata)
+
+- contrast_recovery\
+    Contrast recovery strength.\
+    If set to a value above 0.0, the source image will be divided into high-frequency and low-frequency components, and a portion of the high-frequency image is added back onto the tone-mapped output.\
+    May cause excessive ringing artifacts for some HDR sources, but can improve the subjective sharpness and detail left over in the image after tone-mapping.\
+    Must be equal to or greater than 0.0.\
+    Default: 0.3.
+
+- contrast_smoothness\
+    Contrast recovery lowpass kernel size.\
+    Increasing or decreasing this will affect the visual appearance substantially.\
+    Must be equal to or greater than 0.0.\
+    Default: 0.35.
 
 - visualize_lut\
     Visualize the tone-mapping curve / LUT. (PQ-PQ graph)\

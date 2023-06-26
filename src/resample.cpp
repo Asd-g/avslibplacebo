@@ -104,20 +104,26 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
     }
     else
     {
+        pl_sample_src src1 = src;
+        src.new_w = src.tex->params.w;
+        src.rect.x0 = 0;
+        src.rect.x1 = src.new_w;
+        src1.rect.y0 = 0;
+        src1.rect.y1 = src.new_h;
+
         pl_shader tsh{ pl_dispatch_begin(p.dp) };
 
-        if (!pl_shader_sample_ortho(tsh, PL_SEP_VERT, &src, &sample_params))
+        if (!pl_shader_sample_ortho2(tsh, &src, &sample_params))
         {
             pl_dispatch_abort(p.dp, &tsh);
             return 4;
         }
 
+        tp.w = src.new_w;
         tp.h = src.new_h;
 
         if (!pl_tex_recreate(p.gpu, &sep_fbo, &tp))
             return 5;
-
-        src.tex = sep_fbo;
 
         dp.target = sep_fbo;
         dp.shader = &tsh;
@@ -125,7 +131,10 @@ static int resample_do_plane(priv& p, resample& data, const int w, const int h, 
         if (!pl_dispatch_finish(p.dp, &dp))
             return 6;
 
-        if (!pl_shader_sample_ortho(sh, PL_SEP_HORIZ, &src, &sample_params))
+        src1.tex = sep_fbo;
+        src1.scale = 1.0f;
+
+        if (!pl_shader_sample_ortho2(sh, &src1, &sample_params))
             return 7;
     }
 
@@ -319,6 +328,10 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 
     resample* params{ new resample() };
 
+    AVS_Value avs_ver{ avs_version("libplacebo_Resample", env) };
+    if (avs_is_error(avs_ver))
+        return avs_ver;
+
     if (!avs_is_planar(&fi->vi))
         return set_error(clip, "libplacebo_Resample: clip must be in planar format.");
     if (avs_bits_per_component(&fi->vi) != 8 && avs_bits_per_component(&fi->vi) != 16 && avs_bits_per_component(&fi->vi) != 32)
@@ -335,7 +348,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 
     if (list_device || device > -1)
     {
-        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, std::string("libplacebo_Resample"), device, list_device) };
+        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Resample", device, list_device) };
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
     }
