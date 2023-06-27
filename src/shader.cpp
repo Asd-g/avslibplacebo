@@ -1,3 +1,4 @@
+#include <cstring>
 #include <mutex>
 #include <regex>
 
