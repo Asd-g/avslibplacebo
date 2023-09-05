@@ -246,21 +246,21 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
     AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
 
     const auto error{ [&](const std::string msg, pl_buf* dst_buf)
+    {
+        avs_release_video_frame(src);
+        avs_release_video_frame(dst);
+
+        if (dst_buf)
         {
-            avs_release_video_frame(src);
-            avs_release_video_frame(dst);
-
-            if (dst_buf)
-            {
-                for (int i{ 0 }; i < 3; ++i)
-                    pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
-            }
-
-            d->msg = msg;
-            fi->error = d->msg.c_str();
-
-            return nullptr;
+            for (int i{ 0 }; i < 3; ++i)
+                pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
         }
+
+        d->msg = msg;
+        fi->error = d->msg.c_str();
+
+        return nullptr;
+    }
     };
 
     int err;
@@ -525,7 +525,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     enum
     {
         Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Intent, Gamut_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
-        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device
+        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale
     };
 
     AVS_FilterInfo* fi;
@@ -674,6 +674,14 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     params->render_params->cone_params = nullptr;
     params->render_params->color_adjustment = nullptr;
     params->render_params->deband_params = nullptr;
+
+    if (avs_defined(avs_array_elt(args, Cscale)))
+    {
+        const pl_filter_preset* cscaler{ pl_find_filter_preset(avs_as_string(avs_array_elt(args, Cscale))) };
+        if (!cscaler)
+            return set_error(clip, "libplacebo_Tonemap: not a valid cscale.");
+        params->render_params->plane_upscaler = cscaler->filter;
+    }
 
     if (srcIsRGB)
         params->is_subsampled = 0;

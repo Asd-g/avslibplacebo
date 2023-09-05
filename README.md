@@ -14,9 +14,9 @@ This is [a port of the VapourSynth plugin vs-placebo](https://github.com/Lypheo/
 
 ### Filters
 
-[Debanding](#debanding)\
-[Resampling](#resampling)\
-[Shader](#shader)\
+[Debanding](#debanding)<br>
+[Resampling](#resampling)<br>
+[Shader](#shader)<br>
 [Tone mapping](#tone-mapping)
 
 ### Debanding
@@ -29,99 +29,99 @@ libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius
 
 #### Parameters:
 
-- input\
-    A clip to process.\
+- input<br>
+    A clip to process.<br>
     It must be in 8, 16 or 32-bit planar format.
 
-- iterations\
-    The number of debanding steps to perform per sample.\
-    Each step reduces a bit more banding, but takes time to compute.\
-    Note that the strength of each step falls off very quickly, so high numbers (>4) are practically useless.\
-    Must be greater than or equal to 0.\
+- iterations<br>
+    The number of debanding steps to perform per sample.<br>
+    Each step reduces a bit more banding, but takes time to compute.<br>
+    Note that the strength of each step falls off very quickly, so high numbers (>4) are practically useless.<br>
+    Must be greater than or equal to 0.<br>
     Default: 1.
 
-- threshold\
-    The debanding filter's cut-off threshold.\
-    Higher numbers increase the debanding strength dramatically, but progressively diminish image details.\
-    Must be greater than or equal to 0.0.\
+- threshold<br>
+    The debanding filter's cut-off threshold.<br>
+    Higher numbers increase the debanding strength dramatically, but progressively diminish image details.<br>
+    Must be greater than or equal to 0.0.<br>
     Default: 4.0.
 
-- radius\
-    The debanding filter's initial radius.\
-    The radius increases linearly for each iteration.\
-    A higher radius will find more gradients, but a lower radius will smooth more aggressively.\
-    Must be radius must be greater than or equal to 0.0.\
+- radius<br>
+    The debanding filter's initial radius.<br>
+    The radius increases linearly for each iteration.<br>
+    A higher radius will find more gradients, but a lower radius will smooth more aggressively.<br>
+    Must be radius must be greater than or equal to 0.0.<br>
     Default: 16.0.
 
-- grainY, grainC\
-    Add some extra noise respectively to the luma and chroma plane.\
-    This significantly helps cover up remaining quantization artifacts.\
-    Higher numbers add more noise.\
-    Note: When debanding HDR sources, even a small amount of grain can result in a very big change to the brightness level.\
-    It's recommended to either scale this value down or disable it entirely for HDR.\
-    Must be greater than or equal to 0.0.\
-    When the clip is RGB, grainC doesn't have effect.\
+- grainY, grainC<br>
+    Add some extra noise respectively to the luma and chroma plane.<br>
+    This significantly helps cover up remaining quantization artifacts.<br>
+    Higher numbers add more noise.<br>
+    Note: When debanding HDR sources, even a small amount of grain can result in a very big change to the brightness level.<br>
+    It's recommended to either scale this value down or disable it entirely for HDR.<br>
+    Must be greater than or equal to 0.0.<br>
+    When the clip is RGB, grainC doesn't have effect.<br>
     Default: grainY = 6.0; grainC = grainY.
 
-- dither\
-    It's valid only for 8-bit clips.\
+- dither<br>
+    It's valid only for 8-bit clips.<br>
     0: Disabled.
 
-    1: PL_DITHER_BLUE_NOISE\
-    Dither with blue noise.\
-    Very high quality, but requires the use of a LUT.\
+    1: PL_DITHER_BLUE_NOISE<br>
+    Dither with blue noise.<br>
+    Very high quality, but requires the use of a LUT.<br>
     Warning: Computing a blue noise texture with a large size can be very slow, however this only needs to be performed once. Even so, using this with a `lut_size` greater than `6` is generally ill-advised.
 
-    2: PL_DITHER_ORDERED_LUT\
-    Dither with an ordered (bayer) dither matrix, using a LUT.\
-    Low quality, and since this also uses a LUT, there's generally no advantage to picking this instead of `PL_DITHER_BLUE_NOISE`.\
+    2: PL_DITHER_ORDERED_LUT<br>
+    Dither with an ordered (bayer) dither matrix, using a LUT.<br>
+    Low quality, and since this also uses a LUT, there's generally no advantage to picking this instead of `PL_DITHER_BLUE_NOISE`.<br>
     It's mainly there for testing.
 
-    3: PL_DITHER_ORDERED_FIXED\
-    The same as `PL_DITHER_ORDERED_LUT`, but uses fixed function math instead of a LUT.\
+    3: PL_DITHER_ORDERED_FIXED<br>
+    The same as `PL_DITHER_ORDERED_LUT`, but uses fixed function math instead of a LUT.<br>
     This is faster, but only supports a fixed dither matrix size of 16x16 (equal to a `lut_size` of 4).
 
-    4: PL_DITHER_WHITE_NOISE\
-    Dither with white noise.\
-    This does not require a LUT and is fairly cheap to compute.\
+    4: PL_DITHER_WHITE_NOISE<br>
+    Dither with white noise.<br>
+    This does not require a LUT and is fairly cheap to compute.<br>
     Unlike the other modes it doesn't show any repeating patterns either spatially or temporally, but the downside is that this is visually fairly jarring due to the presence of low frequencies in the noise spectrum.
 
     Default: 1.
 
-- lut_size\
-    For the dither methods which require the use of a LUT.\
-    This controls the size of the LUT (base 2).\
-    Must be less than or equal to 8.\
+- lut_size<br>
+    For the dither methods which require the use of a LUT.<br>
+    This controls the size of the LUT (base 2).<br>
+    Must be less than or equal to 8.<br>
     Default: 6 (64x64).
 
-- temporal\
-    Enables temporal dithering.\
-    his reduces the persistence of dithering artifacts by perturbing the dithering matrix per frame.\
-    Warning: This can cause nasty aliasing artifacts on some LCD screens.\
+- temporal<br>
+    Enables temporal dithering.<br>
+    his reduces the persistence of dithering artifacts by perturbing the dithering matrix per frame.<br>
+    Warning: This can cause nasty aliasing artifacts on some LCD screens.<br>
     Default: False.
 
-- planes\
-    Planes to process.\
-    1: Return garbage.\
-    2: Copy plane.\
-    3: Process plane. Always process planes when the clip is RGB.\
-    Format is [y, u, v].\
+- planes<br>
+    Planes to process.<br>
+    1: Return garbage.<br>
+    2: Copy plane.<br>
+    3: Process plane. Always process planes when the clip is RGB.<br>
+    Format is [y, u, v].<br>
     Default: [3, 2, 2].
 
-- device\
-    Sets target Vulkan device.\
-    Use list_device to get the index of the available devices.\
+- device<br>
+    Sets target Vulkan device.<br>
+    Use list_device to get the index of the available devices.<br>
     By default the default device is selected.
 
-- list_device\
-    Whether to draw the devices list on the frame.\
+- list_device<br>
+    Whether to draw the devices list on the frame.<br>
     Default: False.
 
-- grain_neutral\
-    "Neutral" grain value for each channel being debanded.\
-    Grain application will be modulated to avoid disturbing colors close to this value.\
-    Set this to a value corresponding to black in the relevant colorspace.\
-    Must be greater than 0.0\
+- grain_neutral<br>
+    "Neutral" grain value for each channel being debanded.<br>
+    Grain application will be modulated to avoid disturbing colors close to this value.<br>
+    Set this to a value corresponding to black in the relevant colorspace.<br>
+    Must be greater than 0.0<br>
     Default: [0, 0, 0].
 
 [Back to filters](#filters)
@@ -136,14 +136,14 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 
 #### Parameters:
 
-- input\
-    A clip to process.\
+- input<br>
+    A clip to process.<br>
     It must be in 8, 16 or 32-bit planar format.
 
-- width\
+- width<br>
     The width of the output.
 
-- height\
+- height<br>
     The height of the output.
 
 - filter
@@ -175,127 +175,127 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 
     Default: "ewa_lanczos"
 
-- radius\
-    It may be used to adjust the function's radius.\
-    Defaults to the the radius needed to represent a single filter lobe (tap).\
+- radius<br>
+    It may be used to adjust the function's radius.<br>
+    Defaults to the the radius needed to represent a single filter lobe (tap).<br>
     If the function is not resizable, this doesn't have effect.
 
-- clamp\
-    Represents a clamping coefficient for negative weights:\
-    0.0: No clamping.\
-    1.0: Full clamping, i.e. all negative weights will be clamped to 0.\
-    Values between 0.0 and 1.0 can be specified to apply only a moderate diminishment of negative weights.\
-    Higher values would lead to more blur.\
+- clamp<br>
+    Represents a clamping coefficient for negative weights:<br>
+    0.0: No clamping.<br>
+    1.0: Full clamping, i.e. all negative weights will be clamped to 0.<br>
+    Values between 0.0 and 1.0 can be specified to apply only a moderate diminishment of negative weights.<br>
+    Higher values would lead to more blur.<br>
     Default: 0.0.
 
-- taper\
-    Additional taper coefficient.\
-    This essentially flattens the function's center.\
-    The values within `[-taper, taper]` will return 1.0, with the actual function being squished into the remainder of `[taper, radius]`.\
+- taper<br>
+    Additional taper coefficient.<br>
+    This essentially flattens the function's center.<br>
+    The values within `[-taper, taper]` will return 1.0, with the actual function being squished into the remainder of `[taper, radius]`.<br>
     Default: 0.0.
 
-- blur\
-    Additional blur coefficient.\
-    This effectively stretches the kernel, without changing the effective radius of the filter radius.\
-    Values significantly below 1.0 may seriously degrade the visual output, and should be used with care.\
+- blur<br>
+    Additional blur coefficient.<br>
+    This effectively stretches the kernel, without changing the effective radius of the filter radius.<br>
+    Values significantly below 1.0 may seriously degrade the visual output, and should be used with care.<br>
     Default: 0.0.
 
-- param1, param2\
-    These may be used to adjust the function.\
+- param1, param2<br>
+    These may be used to adjust the function.<br>
     Defaults to the function's preferred defaults. if the relevant setting is not tunable, they are ignored entirely.
 
-- sx\
-    Cropping of the left edge.\
+- sx<br>
+    Cropping of the left edge.<br>
     Default: 0.0.
 
-- sy\
-    Cropping of the top edge.\
+- sy<br>
+    Cropping of the top edge.<br>
     Default: 0.0.
 
-- antiring\
-    Antiringing strength.\
-    A value of 0.0 disables antiringing, and a value of 1.0 enables full-strength antiringing.\
-    Only relevant for separated/orthogonal filters.\
+- antiring<br>
+    Antiringing strength.<br>
+    A value of 0.0 disables antiringing, and a value of 1.0 enables full-strength antiringing.<br>
+    Only relevant for separated/orthogonal filters.<br>
     Default: 0.0.
 
-- lut_entries\
-    The precision of the LUT.\
-    A value of 64 should be fine for most practical purposes, but higher or lower values may be justified depending on the use case.\
-    Must be greater than 0.\
+- lut_entries<br>
+    The precision of the LUT.<br>
+    A value of 64 should be fine for most practical purposes, but higher or lower values may be justified depending on the use case.<br>
+    Must be greater than 0.<br>
     Default: 64.
 
-- cutoff\
-    As a micro-optimization, all samples below this cutoff value will be ignored when updating the cutoff radius.\
-    Setting it to a value of 0.0 disables this optimization.\
-    Only relevant for polar filters.\
+- cutoff<br>
+    As a micro-optimization, all samples below this cutoff value will be ignored when updating the cutoff radius.<br>
+    Setting it to a value of 0.0 disables this optimization.<br>
+    Only relevant for polar filters.<br>
     Default: 0.0.
 
-- sigmoidize, linearize\
-    Whether to linearize/sigmoidize before scaling.\
-    Only relevant for RGB formats.\
-    When sigmodizing, `linearize` should be `true`\
+- sigmoidize, linearize<br>
+    Whether to linearize/sigmoidize before scaling.<br>
+    Only relevant for RGB formats.<br>
+    When sigmodizing, `linearize` should be `true`<br>
     Default: True.
 
-- sigmoid_center\
-    The center (bias) of the sigmoid curve.\
-    Must be between 0.0 and 1.0.\
+- sigmoid_center<br>
+    The center (bias) of the sigmoid curve.<br>
+    Must be between 0.0 and 1.0.<br>
     Default: 0.75.
 
-- sigmoid_slope\
-    The slope (steepness) of the sigmoid curve.\
-    Must be between 1.0 and 20.0.\
+- sigmoid_slope<br>
+    The slope (steepness) of the sigmoid curve.<br>
+    Must be between 1.0 and 20.0.<br>
     Default: 6.5.
 
-- trc\
-    The colorspace's transfer function (gamma / EOTF) to use for linearizing.\
+- trc<br>
+    The colorspace's transfer function (gamma / EOTF) to use for linearizing.<br>
     0: UNKNOWN
 
-    Standard dynamic range:\
-    1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))\
-    2: SRGB (IEC 61966-2-4 sRGB (CRT emulation))\
-    3: LINEAR (Linear light content)\
-    4: GAMMA18 (Pure power gamma 1.8)\
-    5: GAMMA20 (Pure power gamma 2.0)\
-    6: GAMMA22 (Pure power gamma 2.2)\
-    7: GAMMA24 (Pure power gamma 2.4)\
-    8: GAMMA26 (Pure power gamma 2.6)\
-    9: GAMMA28 (Pure power gamma 2.8)\
-    10: PRO_PHOTO (ProPhoto RGB (ROMM))\
+    Standard dynamic range:<br>
+    1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))<br>
+    2: SRGB (IEC 61966-2-4 sRGB (CRT emulation))<br>
+    3: LINEAR (Linear light content)<br>
+    4: GAMMA18 (Pure power gamma 1.8)<br>
+    5: GAMMA20 (Pure power gamma 2.0)<br>
+    6: GAMMA22 (Pure power gamma 2.2)<br>
+    7: GAMMA24 (Pure power gamma 2.4)<br>
+    8: GAMMA26 (Pure power gamma 2.6)<br>
+    9: GAMMA28 (Pure power gamma 2.8)<br>
+    10: PRO_PHOTO (ProPhoto RGB (ROMM))<br>
     11: ST428 (Digital Cinema Distribution Master (XYZ))
 
-    High dynamic range:\
-    12: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
-    13: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
-    14: V_LOG (Panasonic V-Log (VARICAM))\
-    15: S_LOG1 (Sony S-Log1)\
+    High dynamic range:<br>
+    12: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)<br>
+    13: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)<br>
+    14: V_LOG (Panasonic V-Log (VARICAM))<br>
+    15: S_LOG1 (Sony S-Log1)<br>
     16: S_LOG2 (Sony S-Log2)
 
     Default: 1.
 
-- cplace\
-    Chroma sample position in YUV formats.\
-    0: left\
-    1: center\
-    2: topleft\
+- cplace<br>
+    Chroma sample position in YUV formats.<br>
+    0: left<br>
+    1: center<br>
+    2: topleft<br>
     Default: 0.
 
-- device\
-    Sets target Vulkan device.\
-    Use list_device to get the index of the available devices.\
+- device<br>
+    Sets target Vulkan device.<br>
+    Use list_device to get the index of the available devices.<br>
     By default the default device is selected.
 
-- list_device\
-    Whether to draw the devices list on the frame.\
+- list_device<br>
+    Whether to draw the devices list on the frame.<br>
     Default: False.
 
-- src_width\
-    Sets the width of the clip before resizing.\
-    Must be greater than 0.0.\
+- src_width<br>
+    Sets the width of the clip before resizing.<br>
+    Must be greater than 0.0.<br>
     Default: Source width.
 
-- src_height\
-    Sets the height of the clip before resizing.\
-    Must be greater than 0.0.\
+- src_height<br>
+    Sets the height of the clip before resizing.<br>
+    Must be greater than 0.0.<br>
     Default: Source height.
 
 [Back to filters](#filters)
@@ -310,68 +310,68 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 
 #### Parameters:
 
-- input\
-    A clip to process.\
-    It must be YUV 16-bit planar format.\
-    The output is YUV444P16. This is necessitated by the fundamental design of libplacebo/mpv’s custom shader feature: the shaders aren’t meant (nor written) to be run by themselves, but to be injected at arbitrary points into a [rendering pipeline](https://github.com/mpv-player/mpv/wiki/Video-output---shader-stage-diagram) with RGB output.\
+- input<br>
+    A clip to process.<br>
+    It must be YUV 16-bit planar format.<br>
+    The output is YUV444P16. This is necessitated by the fundamental design of libplacebo/mpv’s custom shader feature: the shaders aren’t meant (nor written) to be run by themselves, but to be injected at arbitrary points into a [rendering pipeline](https://github.com/mpv-player/mpv/wiki/Video-output---shader-stage-diagram) with RGB output.<br>
     As such, the user needs to specify the output frame properties, and libplacebo will produce a conforming image, only running the supplied shader if the texture it hooks into is actually rendered. For example, if a shader hooks into the LINEAR texture, it will only be executed when `linearize = true`.
 
-- shader\
+- shader<br>
     Path to the shader file.
 
-- width\
-    The width of the output.\
+- width<br>
+    The width of the output.<br>
     Default: Source width.
 
-- height\
-    The height of the output.\
+- height<br>
+    The height of the output.<br>
     Default: Source height.
 
-- chroma_loc\
-    Chroma location to derive chroma shift from.\
-    0: UNKNOWN\
-    1: LEFT\
-    2: CENTER\
-    3: TOP_LEFT\
-    4: TOP_CENTER\
-    5: BOTTOM_LEFT\
-    6: BOTTOM_CENTER\
+- chroma_loc<br>
+    Chroma location to derive chroma shift from.<br>
+    0: UNKNOWN<br>
+    1: LEFT<br>
+    2: CENTER<br>
+    3: TOP_LEFT<br>
+    4: TOP_CENTER<br>
+    5: BOTTOM_LEFT<br>
+    6: BOTTOM_CENTER<br>
     Default: 1.
 
-- matrix\
-    0: UNKNOWN\
-    1: BT_601 (ITU-R Rec. BT.601 (SD))\
-    2: BT_709 (ITU-R Rec. BT.709 (HD))\
-    3: SMPTE_240M (SMPTE-240M)\
-    4: BT_2020_NC (ITU-R Rec. BT.2020 (non-constant luminance))\
-    5: BT_2020_C (ITU-R Rec. BT.2020 (constant luminance))\
-    6: BT_2100_PQ (ITU-R Rec. BT.2100 ICtCp PQ variant)\
-    7: BT_2100_HLG (ITU-R Rec. BT.2100 ICtCp HLG variant)\
+- matrix<br>
+    0: UNKNOWN<br>
+    1: BT_601 (ITU-R Rec. BT.601 (SD))<br>
+    2: BT_709 (ITU-R Rec. BT.709 (HD))<br>
+    3: SMPTE_240M (SMPTE-240M)<br>
+    4: BT_2020_NC (ITU-R Rec. BT.2020 (non-constant luminance))<br>
+    5: BT_2020_C (ITU-R Rec. BT.2020 (constant luminance))<br>
+    6: BT_2100_PQ (ITU-R Rec. BT.2100 ICtCp PQ variant)<br>
+    7: BT_2100_HLG (ITU-R Rec. BT.2100 ICtCp HLG variant)<br>
     8: YCGCO (YCgCo (derived from RGB))
     Default: 2.
 
-- trc\
-    The colorspace's transfer function (gamma / EOTF) to use for linearizing.\
+- trc<br>
+    The colorspace's transfer function (gamma / EOTF) to use for linearizing.<br>
     0: UNKNOWN
 
-    Standard dynamic range:\
-    1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))\
-    2: SRGB (IEC 61966-2-4 sRGB (CRT emulation))\
-    3: LINEAR (Linear light content)\
-    4: GAMMA18 (Pure power gamma 1.8)\
-    5: GAMMA20 (Pure power gamma 2.0)\
-    6: GAMMA22 (Pure power gamma 2.2)\
-    7: GAMMA24 (Pure power gamma 2.4)\
-    8: GAMMA26 (Pure power gamma 2.6)\
-    9: GAMMA28 (Pure power gamma 2.8)\
-    10: PRO_PHOTO (ProPhoto RGB (ROMM))\
+    Standard dynamic range:<br>
+    1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))<br>
+    2: SRGB (IEC 61966-2-4 sRGB (CRT emulation))<br>
+    3: LINEAR (Linear light content)<br>
+    4: GAMMA18 (Pure power gamma 1.8)<br>
+    5: GAMMA20 (Pure power gamma 2.0)<br>
+    6: GAMMA22 (Pure power gamma 2.2)<br>
+    7: GAMMA24 (Pure power gamma 2.4)<br>
+    8: GAMMA26 (Pure power gamma 2.6)<br>
+    9: GAMMA28 (Pure power gamma 2.8)<br>
+    10: PRO_PHOTO (ProPhoto RGB (ROMM))<br>
     11: ST428 (Digital Cinema Distribution Master (XYZ))
 
-    High dynamic range:\
-    12: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)\
-    13: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)\
-    14: V_LOG (Panasonic V-Log (VARICAM))\
-    15: S_LOG1 (Sony S-Log1)\
+    High dynamic range:<br>
+    12: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)<br>
+    13: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)<br>
+    14: V_LOG (Panasonic V-Log (VARICAM))<br>
+    15: S_LOG1 (Sony S-Log1)<br>
     16: S_LOG2 (Sony S-Log2)
 
     Default: 1.
@@ -405,73 +405,73 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 
     Default: "ewa_lanczos"
 
-- radius\
-    It may be used to adjust the function's radius.\
-    Defaults to the the radius needed to represent a single filter lobe (tap).\
+- radius<br>
+    It may be used to adjust the function's radius.<br>
+    Defaults to the the radius needed to represent a single filter lobe (tap).<br>
     If the function is not resizable, this doesn't have effect.
 
-- clamp\
-    Represents a clamping coefficient for negative weights:\
-    0.0: No clamping.\
-    1.0: Full clamping, i.e. all negative weights will be clamped to 0.\
-    Values between 0.0 and 1.0 can be specified to apply only a moderate diminishment of negative weights.\
-    Higher values would lead to more blur.\
+- clamp<br>
+    Represents a clamping coefficient for negative weights:<br>
+    0.0: No clamping.<br>
+    1.0: Full clamping, i.e. all negative weights will be clamped to 0.<br>
+    Values between 0.0 and 1.0 can be specified to apply only a moderate diminishment of negative weights.<br>
+    Higher values would lead to more blur.<br>
     Default: 0.0.
 
-- taper\
-    Additional taper coefficient.\
-    This essentially flattens the function's center.\
-    The values within `[-taper, taper]` will return 1.0, with the actual function being squished into the remainder of `[taper, radius]`.\
+- taper<br>
+    Additional taper coefficient.<br>
+    This essentially flattens the function's center.<br>
+    The values within `[-taper, taper]` will return 1.0, with the actual function being squished into the remainder of `[taper, radius]`.<br>
     Default: 0.0.
 
-- blur\
-    Additional blur coefficient.\
-    This effectively stretches the kernel, without changing the effective radius of the filter radius.\
-    Values significantly below 1.0 may seriously degrade the visual output, and should be used with care.\
+- blur<br>
+    Additional blur coefficient.<br>
+    This effectively stretches the kernel, without changing the effective radius of the filter radius.<br>
+    Values significantly below 1.0 may seriously degrade the visual output, and should be used with care.<br>
     Default: 0.0.
 
-- param1, param2\
-    These may be used to adjust the function.\
+- param1, param2<br>
+    These may be used to adjust the function.<br>
     Defaults to the function's preferred defaults. if the relevant setting is not tunable, they are ignored entirely.
 
-- antiring\
-    Antiringing strength.\
-    A value of 0.0 disables antiringing, and a value of 1.0 enables full-strength antiringing.\
-    Only relevant for separated/orthogonal filters.\
+- antiring<br>
+    Antiringing strength.<br>
+    A value of 0.0 disables antiringing, and a value of 1.0 enables full-strength antiringing.<br>
+    Only relevant for separated/orthogonal filters.<br>
     Default: 0.0.
 
-- lut_entries\
-    The precision of the LUT.\
-    A value of 64 should be fine for most practical purposes, but higher or lower values may be justified depending on the use case.\
-    Must be greater than 0.\
+- lut_entries<br>
+    The precision of the LUT.<br>
+    A value of 64 should be fine for most practical purposes, but higher or lower values may be justified depending on the use case.<br>
+    Must be greater than 0.<br>
     Default: 64.
 
-- cutoff\
-    As a micro-optimization, all samples below this cutoff value will be ignored when updating the cutoff radius.\
-    Setting it to a value of 0.0 disables this optimization.\
-    Only relevant for polar filters.\
+- cutoff<br>
+    As a micro-optimization, all samples below this cutoff value will be ignored when updating the cutoff radius.<br>
+    Setting it to a value of 0.0 disables this optimization.<br>
+    Only relevant for polar filters.<br>
     Default: 0.0.
 
-- sigmoidize, linearize\
-    Whether to linearize/sigmoidize before scaling.\
-    Only relevant for RGB formats.\
-    When sigmodizing, `linearize` should be `true`\
+- sigmoidize, linearize<br>
+    Whether to linearize/sigmoidize before scaling.<br>
+    Only relevant for RGB formats.<br>
+    When sigmodizing, `linearize` should be `true`<br>
     Default: True.
 
-- sigmoid_center\
-    The center (bias) of the sigmoid curve.\
-    Must be between 0.0 and 1.0.\
+- sigmoid_center<br>
+    The center (bias) of the sigmoid curve.<br>
+    Must be between 0.0 and 1.0.<br>
     Default: 0.75.
 
-- sigmoid_slope\
-    The slope (steepness) of the sigmoid curve.\
-    Must be between 1.0 and 20.0.\
+- sigmoid_slope<br>
+    The slope (steepness) of the sigmoid curve.<br>
+    Must be between 1.0 and 20.0.<br>
     Default: 6.5.
 
-- shader_param\
-    This changes shader's parameter set by `#define XXXX YYYY` on the fly.\
-    Format is: `param=value`.\
-    The parameter is case sensitive and must be the same as in the shader file.\
+- shader_param<br>
+    This changes shader's parameter set by `#define XXXX YYYY` on the fly.<br>
+    Format is: `param=value`.<br>
+    The parameter is case sensitive and must be the same as in the shader file.<br>
     If more than one parameter is specified, the parameters must be separated by space.
 
     Usage example: if the shader has the following parameters:
@@ -480,13 +480,13 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 
     `shader_param="INTENSITY_SIGMA=0.15 SPATIAL_SIGMA=1.1"`
 
-- device\
-    Sets target Vulkan device.\
-    Use list_device to get the index of the available devices.\
+- device<br>
+    Sets target Vulkan device.<br>
+    Use list_device to get the index of the available devices.<br>
     By default the default device is selected.
 
-- list_device\
-    Whether to draw the devices list on the frame.\
+- list_device<br>
+    Whether to draw the devices list on the frame.<br>
     Default: False.
 
 [Back to filters](#filters)
@@ -496,179 +496,210 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 #### Usage:
 
 ```
-libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "intent", int "gamut_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device")
+libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "intent", int "gamut_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale")
 ```
 
 #### Parameters:
 
-- input\
-    A clip to process.\
-    It must be 16-bit planar format. (min. 3 planes)\
+- input<br>
+    A clip to process.<br>
+    It must be 16-bit planar format. (min. 3 planes)<br>
     The output is YUV444P16 if the input is YUV.
 
-- src_csp, dst_csp\
-    Respectively source and output color space.\
-    0: SDR\
-    1: HDR10\
-    2: HLG\
-    3: DOVI\
+- src_csp, dst_csp<br>
+    Respectively source and output color space.<br>
+    0: SDR<br>
+    1: HDR10<br>
+    2: HLG<br>
+    3: DOVI<br>
     Default: src_csp = 1; dst_csp = 0.
 
     For example, to map from [BT.2020, PQ] (HDR) to traditional [BT.709, BT.1886] (SDR), pass `src_csp=1, dst_csp=0`.
 
-- src_max, src_min, dst_max, dst_min\
-    Source max/min and output max/min in nits (cd/m^2).\
-    The source values can be derived from props if available.\
+- src_max, src_min, dst_max, dst_min<br>
+    Source max/min and output max/min in nits (cd/m^2).<br>
+    The source values can be derived from props if available.<br>
     Default: max = 1000 (HDR)/203 (SDR); min = 0.005 (HDR)/0.2023 (SDR)
 
-- dynamic_peak_detection\
-    Enables computation of signal stats to optimize HDR tonemapping quality.\
+- dynamic_peak_detection<br>
+    Enables computation of signal stats to optimize HDR tonemapping quality.<br>
     Default: True.
 
-- smoothing_period\
-    Smoothing coefficient for the detected values.\
-    This controls the time parameter (tau) of an IIR low pass filter. In other words, it represent the cutoff period (= 1 / cutoff frequency) in frames. Frequencies below this length will be suppressed.\
-    This helps block out annoying "sparkling" or "flickering" due to small variations in frame-to-frame brightness.\
+- smoothing_period<br>
+    Smoothing coefficient for the detected values.<br>
+    This controls the time parameter (tau) of an IIR low pass filter. In other words, it represent the cutoff period (= 1 / cutoff frequency) in frames. Frequencies below this length will be suppressed.<br>
+    This helps block out annoying "sparkling" or "flickering" due to small variations in frame-to-frame brightness.<br>
     Default: 100.0.
 
-- scene_threshold_low, scene_threshold_high\
-    In order to avoid reacting sluggishly on scene changes as a result of the low-pass filter, we disable it when the difference between the current frame brightness and the average frame brightness exceeds a given threshold difference.\
-    But rather than a single hard cutoff, which would lead to weird discontinuities on fades, we gradually disable it over a small window of brightness ranges. These parameters control the lower and upper bounds of this window, in dB.\
-    To disable this logic entirely, set either one to a negative value.\
+- scene_threshold_low, scene_threshold_high<br>
+    In order to avoid reacting sluggishly on scene changes as a result of the low-pass filter, we disable it when the difference between the current frame brightness and the average frame brightness exceeds a given threshold difference.<br>
+    But rather than a single hard cutoff, which would lead to weird discontinuities on fades, we gradually disable it over a small window of brightness ranges. These parameters control the lower and upper bounds of this window, in dB.<br>
+    To disable this logic entirely, set either one to a negative value.<br>
     Default: scene_threshold_low = 5.5; scene_threshold_high = 10.0
 
-- percentile\
-    Which percentile of the input image brightness histogram to consider as the true peak of the scene.\
-    If this is set to 100 (or 0), the brightest pixel is measured. Otherwise, the top of the frequency distribution is progressively cut off.\
-    Setting this too low will cause clipping of very bright details, but can improve the dynamic brightness range of scenes with very bright isolated highlights.\
+- percentile<br>
+    Which percentile of the input image brightness histogram to consider as the true peak of the scene.<br>
+    If this is set to 100 (or 0), the brightest pixel is measured. Otherwise, the top of the frequency distribution is progressively cut off.<br>
+    Setting this too low will cause clipping of very bright details, but can improve the dynamic brightness range of scenes with very bright isolated highlights.<br>
     The default of 99.995% is very conservative and should cause no major issues in typical content.
 
-- intent\
-    The rendering intent to use for gamut mapping.\
-    0: PERCEPTUAL\
-    1: RELATIVE_COLORIMETRIC\
-    2: SATURATION\
-    3: ABSOLUTE_COLORIMETRIC\
+- intent<br>
+    The rendering intent to use for gamut mapping.<br>
+    0: PERCEPTUAL<br>
+    1: RELATIVE_COLORIMETRIC<br>
+    2: SATURATION<br>
+    3: ABSOLUTE_COLORIMETRIC<br>
     Default: 1.
 
-- gamut_mode\
-    How to handle out-of-gamut colors when changing the content primaries.\
-    0: CLIP (Do nothing, simply clip out-of-range colors to the RGB volume)\
-    1: WARN (Equal to CLIP but also highlights out-of-gamut colors (by coloring them pink))\
-    2: DARKEN (Linearly reduces content brightness to preserves saturated details, followed by clipping the remaining out-of-gamut colors.\
-    As the name implies, this makes everything darker, but provides a good balance between preserving details and colors.)\
-    3: DESATURATE (Hard-desaturates out-of-gamut colors towards white, while preserving the luminance. Has a tendency to shift colors.)\
+- gamut_mode<br>
+    How to handle out-of-gamut colors when changing the content primaries.<br>
+    0: CLIP (Do nothing, simply clip out-of-range colors to the RGB volume)<br>
+    1: WARN (Equal to CLIP but also highlights out-of-gamut colors (by coloring them pink))<br>
+    2: DARKEN (Linearly reduces content brightness to preserves saturated details, followed by clipping the remaining out-of-gamut colors.<br>
+    As the name implies, this makes everything darker, but provides a good balance between preserving details and colors.)<br>
+    3: DESATURATE (Hard-desaturates out-of-gamut colors towards white, while preserving the luminance. Has a tendency to shift colors.)<br>
     Default: 0.
 
-- tone_mapping_function\
-    0: auto (Special tone mapping function that means "automatically pick a good function based on the HDR levels")\
-    1: clip (Performs no tone-mapping, just clips out-of-range colors.\
-    Retains perfect color accuracy for in-range colors but completely destroys out-of-range information.\
-    Does not perform any black point adaptation.)\
-    2: st2094_40 (EETF from SMPTE ST 2094-40 Annex B, which uses the provided OOTF based on Bezier curves to perform tone-mapping.\
-    The OOTF used is adjusted based on the ratio between the targeted and actual display peak luminances.\
-    In the absence of HDR10+ metadata, falls back to a simple constant bezier curve with tunable knee point.\
-    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.7.)\
-    3: st2094_10 (EETF from SMPTE ST 2094-10 Annex B.2, which takes into account the input signal average luminance in addition to the maximum/minimum.\
-    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.5.\
-    Note: This does *not* currently include the subjective gain/offset/gamma controls defined in Annex B.3.)\
-    4: bt2390 (EETF from the ITU-R Report BT.2390, a hermite spline roll-off with linear segment.\
-    The knee point offset is configurable. Note that this defaults to 1.0, rather than the value of 0.5 from the ITU-R spec.)\
-    5: bt2446a (EETF from ITU-R Report BT.2446, method A.\
-    Can be used for both forward and inverse tone mapping. Not configurable.)\
-    6: spline (Simple spline consisting of two polynomials, joined by a single pivot point.\
-    Simple spline consisting of two polynomials, joined by a single pivot point, which is tuned based on the source scene average brightness (taking into account HDR10+ metadata if available).\
-    The `tone_mapping_param` can be used to tune the desired subjective contrast characteristics.\
-    Higher values make the curve steeper (closer to `clip`), preserving midtones at the cost of losing shadow/highlight details, while lower values make the curve shallower (closer to `linear`), preserving highlights at the cost of losing midtone contrast.\
-    Values above 1.0 are possible, resulting in an output with more contrast than the input.\
-    The default value is 0.5.\
-    This function can be used for both forward and inverse tone mapping.\
-    7: reinhard (Simple non-linear, global tone mapping algorithm.\
-    Named after Erik Reinhard.\
-    The `tone_mapping_param` specifies the local contrast coefficient at the display peak.\
-    Essentially, a value of param=0.5 implies that the reference white will be about half as bright as when clipping.\
-    Defaults to 0.5, which results in the simplest formulation of this function.)\
-    8: mobius (Generalization of the reinhard tone mapping algorithm to support an additional linear slope near black.\
-    The tone mapping `tone_mapping_param` indicates the trade-off between the linear section and the non-linear section.\
-    Essentially, for param=0.5, every color value below 0.5 will be mapped linearly, with the higher values being non-linearly tone mapped.\
-    Values near 1.0 make this curve behave like `clip`, and values near 0.0 make this curve behave like `reinhard`.\
-    The default value is 0.3, which provides a good balance between colorimetric accuracy and preserving out-of-gamut details.\
-    The name is derived from its function shape (ax+b)/(cx+d), which is known as a Möbius transformation in mathematics.)\
-    9: hable (Piece-wise, filmic tone-mapping algorithm developed by John Hable for use in Uncharted 2, inspired by a similar tone-mapping algorithm used by Kodak.\
-    Popularized by its use in video games with HDR rendering.\
-    Preserves both dark and bright details very well, but comes with the drawback of changing the average brightness quite significantly.\
-    This is sort of similar to `reinhard` with `tone_mapping_param` 0.24.)\
-    10: gamma (Fits a gamma (power) function to transfer between the source and target color spaces, effectively resulting in a perceptual hard-knee joining two roughly linear sections.\
-    This preserves details at all scales fairly accurately, but can result in an image with a muted or dull appearance.\
-    The `tone_mapping_param` is used as the cutoff point, defaulting to 0.5.)\
-    11: linear (Linearly stretches the input range to the output range, in PQ space.\
-    This will preserve all details accurately, but results in a significantly different average brightness.\
-    Can be used for inverse tone-mapping in addition to regular tone-mapping.\
-    The parameter can be used as an additional linear gain coefficient (defaulting to 1.0).)\
+- tone_mapping_function<br>
+    0: auto (Special tone mapping function that means "automatically pick a good function based on the HDR levels")<br>
+    1: clip (Performs no tone-mapping, just clips out-of-range colors.<br>
+    Retains perfect color accuracy for in-range colors but completely destroys out-of-range information.<br>
+    Does not perform any black point adaptation.)<br>
+    2: st2094_40 (EETF from SMPTE ST 2094-40 Annex B, which uses the provided OOTF based on Bezier curves to perform tone-mapping.<br>
+    The OOTF used is adjusted based on the ratio between the targeted and actual display peak luminances.<br>
+    In the absence of HDR10+ metadata, falls back to a simple constant bezier curve with tunable knee point.<br>
+    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.7.)<br>
+    3: st2094_10 (EETF from SMPTE ST 2094-10 Annex B.2, which takes into account the input signal average luminance in addition to the maximum/minimum.<br>
+    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.5.<br>
+    Note: This does *not* currently include the subjective gain/offset/gamma controls defined in Annex B.3.)<br>
+    4: bt2390 (EETF from the ITU-R Report BT.2390, a hermite spline roll-off with linear segment.<br>
+    The knee point offset is configurable. Note that this defaults to 1.0, rather than the value of 0.5 from the ITU-R spec.)<br>
+    5: bt2446a (EETF from ITU-R Report BT.2446, method A.<br>
+    Can be used for both forward and inverse tone mapping. Not configurable.)<br>
+    6: spline (Simple spline consisting of two polynomials, joined by a single pivot point.<br>
+    Simple spline consisting of two polynomials, joined by a single pivot point, which is tuned based on the source scene average brightness (taking into account HDR10+ metadata if available).<br>
+    The `tone_mapping_param` can be used to tune the desired subjective contrast characteristics.<br>
+    Higher values make the curve steeper (closer to `clip`), preserving midtones at the cost of losing shadow/highlight details, while lower values make the curve shallower (closer to `linear`), preserving highlights at the cost of losing midtone contrast.<br>
+    Values above 1.0 are possible, resulting in an output with more contrast than the input.<br>
+    The default value is 0.5.<br>
+    This function can be used for both forward and inverse tone mapping.<br>
+    7: reinhard (Simple non-linear, global tone mapping algorithm.<br>
+    Named after Erik Reinhard.<br>
+    The `tone_mapping_param` specifies the local contrast coefficient at the display peak.<br>
+    Essentially, a value of param=0.5 implies that the reference white will be about half as bright as when clipping.<br>
+    Defaults to 0.5, which results in the simplest formulation of this function.)<br>
+    8: mobius (Generalization of the reinhard tone mapping algorithm to support an additional linear slope near black.<br>
+    The tone mapping `tone_mapping_param` indicates the trade-off between the linear section and the non-linear section.<br>
+    Essentially, for param=0.5, every color value below 0.5 will be mapped linearly, with the higher values being non-linearly tone mapped.<br>
+    Values near 1.0 make this curve behave like `clip`, and values near 0.0 make this curve behave like `reinhard`.<br>
+    The default value is 0.3, which provides a good balance between colorimetric accuracy and preserving out-of-gamut details.<br>
+    The name is derived from its function shape (ax+b)/(cx+d), which is known as a Möbius transformation in mathematics.)<br>
+    9: hable (Piece-wise, filmic tone-mapping algorithm developed by John Hable for use in Uncharted 2, inspired by a similar tone-mapping algorithm used by Kodak.<br>
+    Popularized by its use in video games with HDR rendering.<br>
+    Preserves both dark and bright details very well, but comes with the drawback of changing the average brightness quite significantly.<br>
+    This is sort of similar to `reinhard` with `tone_mapping_param` 0.24.)<br>
+    10: gamma (Fits a gamma (power) function to transfer between the source and target color spaces, effectively resulting in a perceptual hard-knee joining two roughly linear sections.<br>
+    This preserves details at all scales fairly accurately, but can result in an image with a muted or dull appearance.<br>
+    The `tone_mapping_param` is used as the cutoff point, defaulting to 0.5.)<br>
+    11: linear (Linearly stretches the input range to the output range, in PQ space.<br>
+    This will preserve all details accurately, but results in a significantly different average brightness.<br>
+    Can be used for inverse tone-mapping in addition to regular tone-mapping.<br>
+    The parameter can be used as an additional linear gain coefficient (defaulting to 1.0).)<br>
     Default: 0.
 
-- tone_mapping_mode\
-    0: AUTO (Picks the best tone-mapping mode based on internal heuristics.)\
-    1: RGB (Per-channel tone-mapping in RGB. Guarantees no clipping and heavily desaturates the output, but distorts the colors quite significantly.)\
-    2: MAX (Tone-mapping is performed on the brightest component found in the signal.\
-    Good at preserving details in highlights, but has a tendency to crush blacks.)\
-    3: HYBRID (Tone-map per-channel for highlights and linearly (luma-based) for midtones/shadows, based on a fixed gamma 2.4 coefficient curve.)\
-    4: LUMA (Tone-map linearly on the luma component, and adjust (desaturate) the chromaticities to compensate using a simple constant factor.\
-    This is essentially the mode used in ITU-R BT.2446 method A.)\
+- tone_mapping_mode<br>
+    0: AUTO (Picks the best tone-mapping mode based on internal heuristics.)<br>
+    1: RGB (Per-channel tone-mapping in RGB. Guarantees no clipping and heavily desaturates the output, but distorts the colors quite significantly.)<br>
+    2: MAX (Tone-mapping is performed on the brightest component found in the signal.<br>
+    Good at preserving details in highlights, but has a tendency to crush blacks.)<br>
+    3: HYBRID (Tone-map per-channel for highlights and linearly (luma-based) for midtones/shadows, based on a fixed gamma 2.4 coefficient curve.)<br>
+    4: LUMA (Tone-map linearly on the luma component, and adjust (desaturate) the chromaticities to compensate using a simple constant factor.<br>
+    This is essentially the mode used in ITU-R BT.2446 method A.)<br>
     Default: 0.
 
-- tone_mapping_param\
-    The tone-mapping curve parameter.\
+- tone_mapping_param<br>
+    The tone-mapping curve parameter.<br>
     Default: Default for the selected `tone_mapping_function`.
 
-- tone_mapping_crosstalk\
-    Extra crosstalk factor to apply before tone-mapping.\
-    May help to improve the appearance of very bright, monochromatic highlights.\
+- tone_mapping_crosstalk<br>
+    Extra crosstalk factor to apply before tone-mapping.<br>
+    May help to improve the appearance of very bright, monochromatic highlights.<br>
     Default: 0.04.
 
-- metadata\
-    Data source to use when tone-mapping.\
-    Setting this to a specific value allows overriding the default metadata preference logic.\
-    0: ANY\
-    1: NONE\
-    2: HDR10 (HDR10 static mastering display metadata)\
-    3: HDR10PLUS (HDR10+ dynamic metadata)\
+- metadata<br>
+    Data source to use when tone-mapping.<br>
+    Setting this to a specific value allows overriding the default metadata preference logic.<br>
+    0: ANY<br>
+    1: NONE<br>
+    2: HDR10 (HDR10 static mastering display metadata)<br>
+    3: HDR10PLUS (HDR10+ dynamic metadata)<br>
     4: CIE_Y (CIE Y derived dynamic luminance metadata)
 
-- contrast_recovery\
-    Contrast recovery strength.\
-    If set to a value above 0.0, the source image will be divided into high-frequency and low-frequency components, and a portion of the high-frequency image is added back onto the tone-mapped output.\
-    May cause excessive ringing artifacts for some HDR sources, but can improve the subjective sharpness and detail left over in the image after tone-mapping.\
-    Must be equal to or greater than 0.0.\
+- contrast_recovery<br>
+    Contrast recovery strength.<br>
+    If set to a value above 0.0, the source image will be divided into high-frequency and low-frequency components, and a portion of the high-frequency image is added back onto the tone-mapped output.<br>
+    May cause excessive ringing artifacts for some HDR sources, but can improve the subjective sharpness and detail left over in the image after tone-mapping.<br>
+    Must be equal to or greater than 0.0.<br>
     Default: 0.3.
 
-- contrast_smoothness\
-    Contrast recovery lowpass kernel size.\
-    Increasing or decreasing this will affect the visual appearance substantially.\
-    Must be equal to or greater than 0.0.\
+- contrast_smoothness<br>
+    Contrast recovery lowpass kernel size.<br>
+    Increasing or decreasing this will affect the visual appearance substantially.<br>
+    Must be equal to or greater than 0.0.<br>
     Default: 0.35.
 
-- visualize_lut\
-    Visualize the tone-mapping curve / LUT. (PQ-PQ graph)\
+- visualize_lut<br>
+    Visualize the tone-mapping curve / LUT. (PQ-PQ graph)<br>
     Default: False.
 
-- show_clipping\
-    Graphically highlight hard-clipped pixels during tone-mapping (i.e. pixels that exceed the claimed source luminance range).\
-    Note that the difference between this and `gamut_mode=1` is that the latter only shows out-of-gamut colors (that are inside the monitor brightness range), while this shows out-of-range colors (regardless of whether or not they're in-gamut).\
+- show_clipping<br>
+    Graphically highlight hard-clipped pixels during tone-mapping (i.e. pixels that exceed the claimed source luminance range).<br>
+    Note that the difference between this and `gamut_mode=1` is that the latter only shows out-of-gamut colors (that are inside the monitor brightness range), while this shows out-of-range colors (regardless of whether or not they're in-gamut).<br>
     Default: False.
 
-- use_dovi\
-    Whether to use the Dolby Vision RPU for ST2086 metadata.\
+- use_dovi<br>
+    Whether to use the Dolby Vision RPU for ST2086 metadata.<br>
     Defaults to true when tonemapping from Dolby Vision.
 
-- device\
-    Sets target Vulkan device.\
-    Use list_device to get the index of the available devices.\
+- device<br>
+    Sets target Vulkan device.<br>
+    Use list_device to get the index of the available devices.<br>
     By default the default device is selected.
 
-- list_device\
-    Whether to draw the devices list on the frame.\
+- list_device<br>
+    Whether to draw the devices list on the frame.<br>
     Default: False.
+
+- cscale<br>
+    The scaler for chroma planes.<br>
+    This is used when the input is YUV420/YUV422.
+
+    * spline16 (2 taps)
+    * spline36 (3 taps)
+    * spline64 (4 taps)
+    * nearest (AKA box)
+    * bilinear (AKA triangle) (resizable)
+    * gaussian (resizable)
+
+    Sinc family (all configured to 3 taps):
+    * sinc (unwindowed) (resizable)
+    * lanczos (sinc-sinc) (resizable)
+    * ginseng (sinc-jinc) (resizable)
+    * ewa_jinc (unwindowed) (resizable)
+    * ewa_lanczos (jinc-jinc) (resizable)
+    * ewa_ginseng (jinc-sinc) (resizable)
+    * ewa_hann (jinc-hann) (resizable)
+
+    Spline family:
+    * bicubic
+    * catmull_rom
+    * mitchell
+    * robidoux
+    * robidouxsharp
+    * ewa_robidoux
+    * ewa_robidouxsharp
+
+    Default: "spline36"
 
 [Back to filters](#filters)
 
