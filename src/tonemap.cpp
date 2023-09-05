@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include <mutex>
 
@@ -524,7 +525,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 {
     enum
     {
-        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Intent, Gamut_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
+        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Gamut_mapping_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
         Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale
     };
 
@@ -585,10 +586,25 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
     params->colorMapParams->tone_mapping_param = (avs_defined(avs_array_elt(args, Tone_mapping_param))) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
 
-    if (avs_defined(avs_array_elt(args, Intent)))
-        params->colorMapParams->intent = static_cast<pl_rendering_intent>(avs_as_int(avs_array_elt(args, Intent)));
-    if (avs_defined(avs_array_elt(args, Gamut_mode)))
-        params->colorMapParams->gamut_mode = static_cast<pl_gamut_mode>(avs_as_int(avs_array_elt(args, Gamut_mode)));
+    if (avs_defined(avs_array_elt(args, Gamut_mapping_mode)))
+    {
+        const int gamut_mapping{ avs_as_int(avs_array_elt(args, Gamut_mapping_mode)) };
+        switch (gamut_mapping)
+        {
+            case 0: break;
+            case 1: params->colorMapParams->gamut_mapping = &pl_gamut_map_clip; break;
+            case 2: params->colorMapParams->gamut_mapping = &pl_gamut_map_perceptual; break;
+            case 3: params->colorMapParams->gamut_mapping = &pl_gamut_map_relative; break;
+            case 4: params->colorMapParams->gamut_mapping = &pl_gamut_map_saturation; break;
+            case 5: params->colorMapParams->gamut_mapping = &pl_gamut_map_absolute; break;
+            case 6: params->colorMapParams->gamut_mapping = &pl_gamut_map_desaturate; break;
+            case 7: params->colorMapParams->gamut_mapping = &pl_gamut_map_darken; break;
+            case 8: params->colorMapParams->gamut_mapping = &pl_gamut_map_highlight; break;
+            case 9: params->colorMapParams->gamut_mapping = &pl_gamut_map_linear; break;
+            default: return set_error(clip, "libplacebo_Tonemap: wrong gamut_mapping_mode.");
+        }
+    }
+
     if (avs_defined(avs_array_elt(args, Tone_mapping_mode)))
         params->colorMapParams->tone_mapping_mode = static_cast<pl_tone_map_mode>(avs_as_int(avs_array_elt(args, Tone_mapping_mode)));
     if (avs_defined(avs_array_elt(args, Tone_mapping_crosstalk)))

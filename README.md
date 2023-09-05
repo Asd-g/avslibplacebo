@@ -496,7 +496,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 #### Usage:
 
 ```
-libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "intent", int "gamut_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale")
+libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "gamut_mapping_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale")
 ```
 
 #### Parameters:
@@ -543,21 +543,18 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Setting this too low will cause clipping of very bright details, but can improve the dynamic brightness range of scenes with very bright isolated highlights.<br>
     The default of 99.995% is very conservative and should cause no major issues in typical content.
 
-- intent<br>
-    The rendering intent to use for gamut mapping.<br>
-    0: PERCEPTUAL<br>
-    1: RELATIVE_COLORIMETRIC<br>
-    2: SATURATION<br>
-    3: ABSOLUTE_COLORIMETRIC<br>
-    Default: 1.
-
-- gamut_mode<br>
-    How to handle out-of-gamut colors when changing the content primaries.<br>
-    0: CLIP (Do nothing, simply clip out-of-range colors to the RGB volume)<br>
-    1: WARN (Equal to CLIP but also highlights out-of-gamut colors (by coloring them pink))<br>
-    2: DARKEN (Linearly reduces content brightness to preserves saturated details, followed by clipping the remaining out-of-gamut colors.<br>
-    As the name implies, this makes everything darker, but provides a good balance between preserving details and colors.)<br>
-    3: DESATURATE (Hard-desaturates out-of-gamut colors towards white, while preserving the luminance. Has a tendency to shift colors.)<br>
+- gamut_mapping_mode<br>
+    Specifies the algorithm used for reducing the gamut of images for the target display, after any tone mapping is done.<br>
+    0: auto (Choose the best mode automatically.)<br>
+    1: clip (Hard-clip to the gamut (per-channel). Very low quality, but free.)<br>
+    2: perceptual (Performs a perceptually balanced gamut mapping using a soft knee function to roll-off clipped regions, and a hue shifting function to preserve saturation.)<br>
+    3: relative (Performs relative colorimetric clipping, while maintaining an exponential relationship between brightness and chromaticity.)<br>
+    4: saturation (Performs simple RGB->RGB saturation mapping. The input R/G/B channels are mapped directly onto the output R/G/B channels. Will never clip, but will distort all hues and/or result in a faded look.)<br>
+    5: absolute (Performs absolute colorimetric clipping. Like `relative`, but does not adapt the white point.)<br>
+    6: desaturate (Performs constant-luminance colorimetric clipping, desaturing colors towards white until they're in-range.)<br>
+    7: darken (Uniformly darkens the input slightly to prevent clipping on blown-out highlights, then clamps colorimetrically to the input gamut boundary, biased slightly to preserve chromaticity over luminance.)<br>
+    8: warn (Performs no gamut mapping, but simply highlights out-of-gamut pixels.)<br>
+    9: linear (Linearly/uniformly desaturates the image in order to bring the entire image into the target gamut.)<br>
     Default: 0.
 
 - tone_mapping_function<br>
