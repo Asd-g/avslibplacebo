@@ -1,3 +1,7 @@
+##### 1.4.0:
+    Tonemap: added cscale parameter.
+    Tonemap: replaced parameters intent, gamut_mode with gamut_mapping_mode.
+
 ##### 1.3.0:
     Tonemap: added parameters contrast_recovery and contrast_smoothness.
     Fixed crashing when unsupported Avs+ used by explicitly throwing error.
