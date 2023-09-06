@@ -73,13 +73,13 @@
     <LibraryPath>..\..\libplacebo\build_x86\src;..\..\dovi_tool\target\i686-pc-windows-msvc\release;..\..\dep_libs\lib;..\..\libp2p\_msvc\Release;..\..\Avisynth_3.7.3_20220419_test1\x86_xp\c_api;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\deps_debug\include;C:\VulkanSDK\1.3.250.0\Include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
-    <LibraryPath>..\..\AviSynthPlus\build_x64_clang\Output\c_api;C:\VulkanSDK\1.3.250.0\Lib;..\deps_debug\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\deps\include;..\..\VulkanSDK\1.3.261.1\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>..\..\VulkanSDK\1.3.261.1\Lib;..\deps\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>..\deps\include;C:\VulkanSDK\1.3.250.0\Include;..\..\AviSynthPlus\avs_core\include;$(IncludePath)</IncludePath>
-    <LibraryPath>..\deps\lib;C:\VulkanSDK\1.3.250.0\Lib;..\..\AviSynthPlus\build_x64_clang\Output\c_api;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\deps\include;..\..\VulkanSDK\1.3.261.1\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>..\deps\lib;..\..\VulkanSDK\1.3.261.1\Lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Label="LLVM" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <UseLldLink>true</UseLldLink>
@@ -126,7 +126,7 @@
     <ClCompile />
     <ClCompile />
     <Link>
-      <AdditionalDependencies>libplacebo.a;vulkan-1.lib;shaderc_shared.lib;AviSynth.lib;dovi.lib;ws2_32.lib;bcrypt.lib;Userenv.lib;ntdll.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libplacebo.a;vulkan-1.lib;shaderc_shared.lib;AviSynth.lib;dovi.dll.lib;ws2_32.lib;bcrypt.lib;Userenv.lib;ntdll.lib;Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ClCompile>
       <LanguageStandard>stdcpp17</LanguageStandard>
