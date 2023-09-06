@@ -1,5 +1,7 @@
 #include "avs_libplacebo.h"
 
+static_assert(PL_API_VER >= 269, "libplacebo version must be at least v6.287.0-rc1.");
+
 std::unique_ptr<struct priv> avs_libplacebo_init(VkPhysicalDevice device)
 {
     std::unique_ptr<priv> p{ std::make_unique<priv>() };

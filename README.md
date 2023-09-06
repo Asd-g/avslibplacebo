@@ -708,7 +708,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
         - Clang-cl (https://github.com/llvm/llvm-project/releases)
         - Vulkan SDK (https://vulkan.lunarg.com/sdk/home#windows)
         - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
-        - libplacebo (https://gitlab.com/uvz/libplacebo)
+        - libplacebo (https://gitlab.com/uvz/libplacebo) (v6.287.0-rc1 or later)
     ```
     ```
     Steps:
@@ -724,8 +724,8 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
             cargo cinstall --release --prefix %prefix%
         Building libplacebo:
             cd avslibplacebo\libplacebo
-            set LIB=%LIB%;C:\VulkanSDK\1.3.250.0\Lib
-            meson build -Dvulkan-registry=C:\VulkanSDK\1.3.250.0\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix%
+            set LIB=%LIB%;C:\VulkanSDK\1.3.261.1\Lib
+            meson build -Dvulkan-registry=C:\VulkanSDK\1.3.261.1\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix%
         Use solution files to build avs_libplacebo.
     ```
 
@@ -734,7 +734,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Requirements:
         - Vulkan lib
         - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
-        - libplacebo (https://code.videolan.org/videolan/libplacebo)
+        - libplacebo (https://code.videolan.org/videolan/libplacebo) (v6.287.0-rc1 or later)
         - AviSynth lib
     ```
 
