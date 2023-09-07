@@ -2,11 +2,14 @@
 #include <cstring>
 #include <mutex>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "avs_libplacebo.h"
 
 extern "C"
 #include "libdovi/rpu_parser.h"
-
 
 static std::mutex mtx;
 
@@ -524,7 +527,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     enum
     {
         Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Gamut_mapping_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
-        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale
+        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale, Lut, Lut_type
     };
 
     AVS_FilterInfo* fi;
@@ -572,75 +575,10 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
     vkDestroyInstance(inst, nullptr);
 
-    params->colorMapParams = std::make_unique<pl_color_map_params>(pl_color_map_default_params);
-
-    // Tone mapping function
-    int function_index{ avs_defined(avs_array_elt(args, Tone_mapping_function)) ? avs_as_int(avs_array_elt(args, Tone_mapping_function)) : 0 };
-
-    if (function_index >= pl_num_tone_map_functions)
-        function_index = 0;
-
-    params->colorMapParams->tone_mapping_function = pl_tone_map_functions[function_index];
-
-    params->colorMapParams->tone_mapping_param = (avs_defined(avs_array_elt(args, Tone_mapping_param))) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
-
-    if (avs_defined(avs_array_elt(args, Gamut_mapping_mode)))
-    {
-        const int gamut_mapping{ avs_as_int(avs_array_elt(args, Gamut_mapping_mode)) };
-        switch (gamut_mapping)
-        {
-            case 0: break;
-            case 1: params->colorMapParams->gamut_mapping = &pl_gamut_map_clip; break;
-            case 2: params->colorMapParams->gamut_mapping = &pl_gamut_map_perceptual; break;
-            case 3: params->colorMapParams->gamut_mapping = &pl_gamut_map_relative; break;
-            case 4: params->colorMapParams->gamut_mapping = &pl_gamut_map_saturation; break;
-            case 5: params->colorMapParams->gamut_mapping = &pl_gamut_map_absolute; break;
-            case 6: params->colorMapParams->gamut_mapping = &pl_gamut_map_desaturate; break;
-            case 7: params->colorMapParams->gamut_mapping = &pl_gamut_map_darken; break;
-            case 8: params->colorMapParams->gamut_mapping = &pl_gamut_map_highlight; break;
-            case 9: params->colorMapParams->gamut_mapping = &pl_gamut_map_linear; break;
-            default: return set_error(clip, "libplacebo_Tonemap: wrong gamut_mapping_mode.");
-        }
-    }
-
-    if (avs_defined(avs_array_elt(args, Tone_mapping_mode)))
-        params->colorMapParams->tone_mapping_mode = static_cast<pl_tone_map_mode>(avs_as_int(avs_array_elt(args, Tone_mapping_mode)));
-    if (avs_defined(avs_array_elt(args, Tone_mapping_crosstalk)))
-        params->colorMapParams->tone_mapping_crosstalk = avs_as_float(avs_array_elt(args, Tone_mapping_crosstalk));
-    if (avs_defined(avs_array_elt(args, Metadata)))
-        params->colorMapParams->metadata = static_cast<pl_hdr_metadata_type>(avs_as_int(avs_array_elt(args, Metadata)));
-    if (avs_defined(avs_array_elt(args, Visualize_lut)))
-        params->colorMapParams->visualize_lut = avs_as_bool(avs_array_elt(args, Visualize_lut));
-    if (avs_defined(avs_array_elt(args, Show_clipping)))
-        params->colorMapParams->show_clipping = avs_as_bool(avs_array_elt(args, Show_clipping));
-
-    params->colorMapParams->contrast_recovery = (avs_defined(avs_array_elt(args, Contrast_recovery))) ? avs_as_float(avs_array_elt(args, Contrast_recovery)) : 0.30f;
-    params->colorMapParams->contrast_smoothness = (avs_defined(avs_array_elt(args, Contrast_smoothness))) ? avs_as_float(avs_array_elt(args, Contrast_smoothness)) : 3.5f;
-
-    if (params->colorMapParams->contrast_recovery < 0.0f)
-        return set_error(clip, "libplacebo_Tonemap: contrast_recovery must be equal to or greater than 0.0f.");
-    if (params->colorMapParams->contrast_smoothness < 0.0f)
-        return set_error(clip, "libplacebo_Tonemap: contrast_smoothness must be equal to or greater than 0.0f.");
-
-    params->peakDetectParams = std::make_unique<pl_peak_detect_params>(pl_peak_detect_default_params);
-    if (avs_defined(avs_array_elt(args, Smoothing_period)))
-        params->peakDetectParams->smoothing_period = avs_as_float(avs_array_elt(args, Smoothing_period));
-    if (avs_defined(avs_array_elt(args, Scene_threshold_low)))
-        params->peakDetectParams->scene_threshold_low = avs_as_float(avs_array_elt(args, Scene_threshold_low));
-    if (avs_defined(avs_array_elt(args, Scene_threshold_high)))
-        params->peakDetectParams->scene_threshold_high = avs_as_float(avs_array_elt(args, Scene_threshold_high));
-    if (avs_defined(avs_array_elt(args, Percentile)))
-        params->peakDetectParams->percentile = avs_as_float(avs_array_elt(args, Percentile));
-
+    params->src_pl_csp = std::make_unique<pl_color_space>();
     params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 1);
-
     if (params->src_csp == CSP_DOVI && srcIsRGB)
         return set_error(clip, "libplacebo_Tonemap: Dolby Vision source colorspace must be a YUV clip!");
-
-    if (params->src_csp == CSP_DOVI)
-        params->dovi_meta = std::make_unique<pl_dovi_metadata>();
-
-    params->src_pl_csp = std::make_unique<pl_color_space>();
 
     switch (params->src_csp)
     {
@@ -661,41 +599,158 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         default: return set_error(clip, "libplacebo_Tonemap: Invalid target colorspace for tonemapping.");
     }
 
-    if (avs_defined(avs_array_elt(args, Src_max)))
+    const int lut_defined{ avs_defined(avs_array_elt(args, Lut)) };
+
+    if (lut_defined)
     {
-        params->original_src_max = avs_as_float(avs_array_elt(args, Src_max));
-        params->src_pl_csp->hdr.max_luma = params->original_src_max;
+        params->render_params = std::make_unique<pl_render_params>();
+
+        const char* lut_path{ avs_as_string(avs_array_elt(args, Lut)) };
+        FILE* lut_file{ nullptr };
+
+#ifdef _WIN32
+        const int required_size{ MultiByteToWideChar(CP_UTF8, 0, lut_path, -1, nullptr, 0) };
+        std::unique_ptr<wchar_t[]> wbuffer{ std::make_unique<wchar_t[]>(required_size) };
+        MultiByteToWideChar(CP_UTF8, 0, lut_path, -1, wbuffer.get(), required_size);
+        lut_file = _wfopen(wbuffer.get(), L"rb");
+#else
+        lut_file = std::fopen(lut_path, "rb");
+#endif
+        if (!lut_file)
+        {
+            params->msg = "libplacebo_Tonemap: error opening file " + std::string(lut_path) + " (" + std::strerror(errno) + ")";
+            return set_error(clip, params->msg.c_str());
+        }
+        if (std::fseek(lut_file, 0, SEEK_END))
+        {
+            std::fclose(lut_file);
+            params->msg = "libplacebo_Tonemap: error seeking to the end of file " + std::string(lut_path) + " (" + std::strerror(errno) + ")";
+            return set_error(clip, params->msg.c_str());
+        }
+        const long lut_size{ std::ftell(lut_file) };
+        if (lut_size == -1)
+        {
+            std::fclose(lut_file);
+            params->msg = "libplacebo_Tonemap: error determining the size of file " + std::string(lut_path) + " (" + std::strerror(errno) + ")";
+            return set_error(clip, params->msg.c_str());
+        }
+
+        std::rewind(lut_file);
+
+        std::string bdata;
+        bdata.resize(lut_size);
+        std::fread(bdata.data(), 1, lut_size, lut_file);
+        bdata[lut_size] = '\0';
+
+        std::fclose(lut_file);
+
+        params->render_params->lut = pl_lut_parse_cube(params->vf->log, bdata.c_str(), bdata.size());
+
+        const int lut_type{ (avs_defined(avs_array_elt(args, Lut_type))) ? avs_as_int(avs_array_elt(args, Lut_type)) : 3 };
+        if (lut_type < 1 || lut_type > 3)
+            return set_error(clip, "libplacebo_Tonemap: lut_type must be between 1 and 3.");
+
+        params->render_params->lut_type = static_cast<pl_lut_type>(lut_type);
     }
-    if (avs_defined(avs_array_elt(args, Src_min)))
+    else
     {
-        params->original_src_min = avs_as_float(avs_array_elt(args, Src_min));
-        params->src_pl_csp->hdr.min_luma = params->original_src_min;
+        if (params->src_csp == CSP_DOVI)
+            params->dovi_meta = std::make_unique<pl_dovi_metadata>();
+
+        params->colorMapParams = std::make_unique<pl_color_map_params>(pl_color_map_default_params);
+
+        // Tone mapping function
+        int function_index{ avs_defined(avs_array_elt(args, Tone_mapping_function)) ? avs_as_int(avs_array_elt(args, Tone_mapping_function)) : 0 };
+
+        if (function_index >= pl_num_tone_map_functions)
+            function_index = 0;
+
+        params->colorMapParams->tone_mapping_function = pl_tone_map_functions[function_index];
+
+        params->colorMapParams->tone_mapping_param = (avs_defined(avs_array_elt(args, Tone_mapping_param))) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
+
+        if (avs_defined(avs_array_elt(args, Gamut_mapping_mode)))
+        {
+            const int gamut_mapping{ avs_as_int(avs_array_elt(args, Gamut_mapping_mode)) };
+            switch (gamut_mapping)
+            {
+                case 0: break;
+                case 1: params->colorMapParams->gamut_mapping = &pl_gamut_map_clip; break;
+                case 2: params->colorMapParams->gamut_mapping = &pl_gamut_map_perceptual; break;
+                case 3: params->colorMapParams->gamut_mapping = &pl_gamut_map_relative; break;
+                case 4: params->colorMapParams->gamut_mapping = &pl_gamut_map_saturation; break;
+                case 5: params->colorMapParams->gamut_mapping = &pl_gamut_map_absolute; break;
+                case 6: params->colorMapParams->gamut_mapping = &pl_gamut_map_desaturate; break;
+                case 7: params->colorMapParams->gamut_mapping = &pl_gamut_map_darken; break;
+                case 8: params->colorMapParams->gamut_mapping = &pl_gamut_map_highlight; break;
+                case 9: params->colorMapParams->gamut_mapping = &pl_gamut_map_linear; break;
+                default: return set_error(clip, "libplacebo_Tonemap: wrong gamut_mapping_mode.");
+            }
+        }
+
+        if (avs_defined(avs_array_elt(args, Tone_mapping_mode)))
+            params->colorMapParams->tone_mapping_mode = static_cast<pl_tone_map_mode>(avs_as_int(avs_array_elt(args, Tone_mapping_mode)));
+        if (avs_defined(avs_array_elt(args, Tone_mapping_crosstalk)))
+            params->colorMapParams->tone_mapping_crosstalk = avs_as_float(avs_array_elt(args, Tone_mapping_crosstalk));
+        if (avs_defined(avs_array_elt(args, Metadata)))
+            params->colorMapParams->metadata = static_cast<pl_hdr_metadata_type>(avs_as_int(avs_array_elt(args, Metadata)));
+        if (avs_defined(avs_array_elt(args, Visualize_lut)))
+            params->colorMapParams->visualize_lut = avs_as_bool(avs_array_elt(args, Visualize_lut));
+        if (avs_defined(avs_array_elt(args, Show_clipping)))
+            params->colorMapParams->show_clipping = avs_as_bool(avs_array_elt(args, Show_clipping));
+
+        params->colorMapParams->contrast_recovery = (avs_defined(avs_array_elt(args, Contrast_recovery))) ? avs_as_float(avs_array_elt(args, Contrast_recovery)) : 0.30f;
+        params->colorMapParams->contrast_smoothness = (avs_defined(avs_array_elt(args, Contrast_smoothness))) ? avs_as_float(avs_array_elt(args, Contrast_smoothness)) : 3.5f;
+
+        if (params->colorMapParams->contrast_recovery < 0.0f)
+            return set_error(clip, "libplacebo_Tonemap: contrast_recovery must be equal to or greater than 0.0f.");
+        if (params->colorMapParams->contrast_smoothness < 0.0f)
+            return set_error(clip, "libplacebo_Tonemap: contrast_smoothness must be equal to or greater than 0.0f.");
+
+        params->peakDetectParams = std::make_unique<pl_peak_detect_params>(pl_peak_detect_default_params);
+        if (avs_defined(avs_array_elt(args, Smoothing_period)))
+            params->peakDetectParams->smoothing_period = avs_as_float(avs_array_elt(args, Smoothing_period));
+        if (avs_defined(avs_array_elt(args, Scene_threshold_low)))
+            params->peakDetectParams->scene_threshold_low = avs_as_float(avs_array_elt(args, Scene_threshold_low));
+        if (avs_defined(avs_array_elt(args, Scene_threshold_high)))
+            params->peakDetectParams->scene_threshold_high = avs_as_float(avs_array_elt(args, Scene_threshold_high));
+        if (avs_defined(avs_array_elt(args, Percentile)))
+            params->peakDetectParams->percentile = avs_as_float(avs_array_elt(args, Percentile));
+
+        if (avs_defined(avs_array_elt(args, Src_max)))
+        {
+            params->original_src_max = avs_as_float(avs_array_elt(args, Src_max));
+            params->src_pl_csp->hdr.max_luma = params->original_src_max;
+        }
+        if (avs_defined(avs_array_elt(args, Src_min)))
+        {
+            params->original_src_min = avs_as_float(avs_array_elt(args, Src_min));
+            params->src_pl_csp->hdr.min_luma = params->original_src_min;
+        }
+
+        if (avs_defined(avs_array_elt(args, Dst_max)))
+            params->dst_pl_csp->hdr.max_luma = avs_as_float(avs_array_elt(args, Dst_max));
+        if (avs_defined(avs_array_elt(args, Dst_min)))
+            params->dst_pl_csp->hdr.min_luma = avs_as_float(avs_array_elt(args, Dst_min));
+
+        const int peak_detection{ avs_defined(avs_array_elt(args, Dynamic_peak_detection)) ? avs_as_bool(avs_array_elt(args, Dynamic_peak_detection)) : 1 };
+        params->use_dovi = avs_defined(avs_array_elt(args, Use_dovi)) ? avs_as_bool(avs_array_elt(args, Use_dovi)) : params->src_csp == CSP_DOVI;
+
+        params->render_params = std::make_unique<pl_render_params>(pl_render_default_params);
+        params->render_params->color_map_params = params->colorMapParams.get();
+        params->render_params->peak_detect_params = (peak_detection) ? params->peakDetectParams.get() : nullptr;
+        params->render_params->sigmoid_params = &pl_sigmoid_default_params;
+        params->render_params->dither_params = &pl_dither_default_params;
+        params->render_params->cone_params = nullptr;
+        params->render_params->color_adjustment = nullptr;
+        params->render_params->deband_params = nullptr;
     }
 
-    if (avs_defined(avs_array_elt(args, Dst_max)))
-        params->dst_pl_csp->hdr.max_luma = avs_as_float(avs_array_elt(args, Dst_max));
-    if (avs_defined(avs_array_elt(args, Dst_min)))
-        params->dst_pl_csp->hdr.min_luma = avs_as_float(avs_array_elt(args, Dst_min));
-
-    const int peak_detection{ avs_defined(avs_array_elt(args, Dynamic_peak_detection)) ? avs_as_bool(avs_array_elt(args, Dynamic_peak_detection)) : 1 };
-    params->use_dovi = avs_defined(avs_array_elt(args, Use_dovi)) ? avs_as_bool(avs_array_elt(args, Use_dovi)) : params->src_csp == CSP_DOVI;
-
-    params->render_params = std::make_unique<pl_render_params>(pl_render_default_params);
-    params->render_params->color_map_params = params->colorMapParams.get();
-    params->render_params->peak_detect_params = (peak_detection) ? params->peakDetectParams.get() : nullptr;
-    params->render_params->sigmoid_params = &pl_sigmoid_default_params;
-    params->render_params->dither_params = &pl_dither_default_params;
-    params->render_params->cone_params = nullptr;
-    params->render_params->color_adjustment = nullptr;
-    params->render_params->deband_params = nullptr;
-
-    if (avs_defined(avs_array_elt(args, Cscale)))
-    {
-        const pl_filter_preset* cscaler{ pl_find_filter_preset(avs_as_string(avs_array_elt(args, Cscale))) };
-        if (!cscaler)
-            return set_error(clip, "libplacebo_Tonemap: not a valid cscale.");
-        params->render_params->plane_upscaler = cscaler->filter;
-    }
+    const char* cscale{ (avs_defined(avs_array_elt(args, Cscale))) ? avs_as_string(avs_array_elt(args, Cscale)) : "spline36" };
+    const pl_filter_preset* cscaler{ pl_find_filter_preset(cscale) };
+    if (!cscaler)
+        return set_error(clip, "libplacebo_Tonemap: not a valid cscale.");
+    params->render_params->plane_upscaler = cscaler->filter;
 
     if (srcIsRGB)
         params->is_subsampled = 0;
