@@ -133,7 +133,6 @@ struct tonemap
     std::unique_ptr<pl_color_repr> src_repr;
     std::unique_ptr<pl_color_repr> dst_repr;
     int use_dovi;
-    void* packed_dst;
     std::unique_ptr<pl_color_map_params> colorMapParams;
     std::unique_ptr<pl_peak_detect_params> peakDetectParams;
     std::unique_ptr<pl_dovi_metadata> dovi_meta;
@@ -511,7 +510,6 @@ static void AVSC_CC free_tonemap(AVS_FilterInfo* fi)
 {
     tonemap* d{ reinterpret_cast<tonemap*>(fi->user_data) };
 
-    operator delete (d->packed_dst);
     avs_libplacebo_uninit(std::move(d->vf));
     delete d;
 }
@@ -734,8 +732,6 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->dst_repr->levels = PL_COLOR_LEVELS_FULL;
         params->dst_repr->sys = PL_COLOR_SYSTEM_RGB;
     }
-
-    params->packed_dst = operator new(fi->vi.width * fi->vi.height * 2 * 3);
 
     AVS_Value v{ avs_new_value_clip(clip) };
 
