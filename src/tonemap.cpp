@@ -513,6 +513,9 @@ static void AVSC_CC free_tonemap(AVS_FilterInfo* fi)
 {
     tonemap* d{ reinterpret_cast<tonemap*>(fi->user_data) };
 
+    if (d->render_params->lut)
+        pl_lut_free(const_cast<pl_custom_lut**>(&d->render_params->lut));
+
     avs_libplacebo_uninit(std::move(d->vf));
     delete d;
 }
@@ -645,6 +648,8 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         std::fclose(lut_file);
 
         params->render_params->lut = pl_lut_parse_cube(params->vf->log, bdata.c_str(), bdata.size());
+        if (!params->render_params->lut)
+            return set_error(clip, "libplacebo_Tonemap: failed lut parsing.");
 
         const int lut_type{ (avs_defined(avs_array_elt(args, Lut_type))) ? avs_as_int(avs_array_elt(args, Lut_type)) : 3 };
         if (lut_type < 1 || lut_type > 3)
@@ -749,7 +754,13 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     const char* cscale{ (avs_defined(avs_array_elt(args, Cscale))) ? avs_as_string(avs_array_elt(args, Cscale)) : "spline36" };
     const pl_filter_preset* cscaler{ pl_find_filter_preset(cscale) };
     if (!cscaler)
+    {
+        if (lut_defined)
+            pl_lut_free(const_cast<pl_custom_lut**>(&params->render_params->lut));
+
         return set_error(clip, "libplacebo_Tonemap: not a valid cscale.");
+    }
+
     params->render_params->plane_upscaler = cscaler->filter;
 
     if (srcIsRGB)
