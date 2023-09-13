@@ -496,7 +496,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 #### Usage:
 
 ```
-libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "gamut_mapping_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale")
+libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "gamut_mapping_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale", string "lut", int "lut_type", int "dst_prim", int "dst_trc", int "dst_sys")
 ```
 
 #### Parameters:
@@ -697,6 +697,87 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     * ewa_robidouxsharp
 
     Default: "spline36"
+
+- lut<br>
+    Path to the color mapping LUT.<br>
+    If present, this will be applied as part of the image being rendered.<br>
+    `src_csp` and `dst_csp` should be used to indicate the color spaces.<br>
+    Default: not specified.
+
+- lut_type<br>
+    Controls the interpretation of color values fed to and from the LUT.<br>
+    1: native (Applied to raw image contents in its native RGB colorspace (non-linear light), before conversion to the output color space.)<br>
+    2: normalized (Applied to the normalized RGB image contents, in linear light, before conversion to the output color space.)<br>
+    3: conversion (Fully replaces the conversion from the input color space to the output color space. It overrides options related to tone mapping and output colorimetry (dst_prim, dst_trc etc.)<br>
+    Default: 3.
+
+- dst_prim<br>
+    Target primaries.<br>
+    `dst_trc` must be also specified.<br>
+    `dst_csp` does no effect.
+
+    Standard gamut:<br>
+    1: BT_601_525 (ITU-R Rec. BT.601 (525-line = NTSC, SMPTE-C))<br>
+    2: BT_601_625 (ITU-R Rec. BT.601 (625-line = PAL, SECAM))<br>
+    3: BT_709 (ITU-R Rec. BT.709 (HD), also sRGB)<br>
+    4: BT_470M (ITU-R Rec. BT.470 M)<br>
+    5: EBU_3213 (EBU Tech. 3213-E / JEDEC P22 phosphors)<br>
+    Wide gamut:<br>
+    6: BT_2020 (ITU-R Rec. BT.2020 (UltraHD))<br>
+    7: APPLE (Apple RGB)<br>
+    8: ADOBE (Adobe RGB (1998))<br>
+    9: PRO_PHOTO (ProPhoto RGB (ROMM))<br>
+    10: CIE_1931 (CIE 1931 RGB primaries)<br>
+    11: DCI_P3 (DCI-P3 (Digital Cinema))<br>
+    12: DISPLAY_P3 (DCI-P3 (Digital Cinema) with D65 white point)<br>
+    13: V_GAMUT (Panasonic V-Gamut (VARICAM))<br>
+    14: S_GAMUT (Sony S-Gamut)<br>
+    15: FILM_C (Traditional film primaries with Illuminant C)<br>
+    16: ACES_AP0 (ACES Primaries #0 (ultra wide))<br>
+    17: ACES_AP1 (ACES Primaries #1)
+
+    Default: not specified.
+
+- dst_trc<br>
+    Target transfer function.<br>
+    `dst_prim` must be also specified.<br>
+    `dst_csp` does no effect.
+
+    Standard dynamic range:<br>
+    1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))<br>
+    2: SRGB (IEC 61966-2-4 sRGB (CRT emulation))<br>
+    3: LINEAR (Linear light content)<br>
+    4: GAMMA18 (Pure power gamma 1.8)<br>
+    5: GAMMA20 (Pure power gamma 2.0)<br>
+    6: GAMMA22 (Pure power gamma 2.2)<br>
+    7: GAMMA24 (Pure power gamma 2.4)<br>
+    8: GAMMA26 (Pure power gamma 2.6)<br>
+    9: GAMMA28 (Pure power gamma 2.8)<br>
+    10: PRO_PHOTO (ProPhoto RGB (ROMM))<br>
+    11: ST428 (Digital Cinema Distribution Master (XYZ))<br>
+    High dynamic range:<br>
+    12: PQ (ITU-R BT.2100 PQ (perceptual quantizer), aka SMPTE ST2048)<br>
+    13: HLG (ITU-R BT.2100 HLG (hybrid log-gamma), aka ARIB STD-B67)<br>
+    14: V_LOG (Panasonic V-Log (VARICAM))<br>
+    15: S_LOG1 (Sony S-Log1)<br>
+    16: S_LOG2 (Sony S-Log2)<br>
+
+    Default: not specified.
+
+- dst_sys<br>
+    The underlying color representation.<br>
+    This does no effect if both `dst_prim` and `dst_trc` are not specified.<br>
+    It has effect only for YUV input.<br>
+    1: BT_601 (ITU-R Rec. BT.601 (SD))<br>
+    2: BT_709 (ITU-R Rec. BT.709 (HD))<br>
+    3: SMPTE_240M (SMPTE-240M)<br>
+    4: BT_2020_NC (ITU-R Rec. BT.2020 (non-constant luminance))<br>
+    5: BT_2020_C (ITU-R Rec. BT.2020 (constant luminance))<br>
+    6: BT_2100_PQ (ITU-R Rec. BT.2100 ICtCp PQ variant)<br>
+    7: BT_2100_HLG (ITU-R Rec. BT.2100 ICtCp HLG variant)<br>
+    8: DOLBYVISION (Dolby Vision (see pl_dovi_metadata))<br>
+    9: YCGCO (YCgCo (derived from RGB))<br>
+    Default: not specified.
 
 [Back to filters](#filters)
 

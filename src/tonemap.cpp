@@ -530,7 +530,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     enum
     {
         Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Gamut_mapping_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
-        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale, Lut, Lut_type
+        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale, Lut, Lut_type, Dst_prim, Dst_trc, Dst_sys
     };
 
     AVS_FilterInfo* fi;
@@ -592,15 +592,35 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     }
 
     params->dst_pl_csp = std::make_unique<pl_color_space>();
-    params->dst_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Dst_csp)) ? avs_as_int(avs_array_elt(args, Dst_csp)) : 0);
 
-    switch (params->dst_csp)
+    const int dst_prim_defined{ avs_defined(avs_array_elt(args, Dst_prim)) };
+    const int dst_trc_defined{ avs_defined(avs_array_elt(args, Dst_trc)) };
+    if (dst_prim_defined && dst_trc_defined)
     {
-        case CSP_SDR: *params->dst_pl_csp.get() = pl_color_space_bt709; break;
-        case CSP_HDR10: *params->dst_pl_csp.get() = pl_color_space_hdr10; break;
-        case CSP_HLG: *params->dst_pl_csp.get() = pl_color_space_bt2020_hlg; break;
-        default: return set_error(clip, "libplacebo_Tonemap: Invalid target colorspace for tonemapping.");
+        const int dst_prim{ avs_as_int(avs_array_elt(args, Dst_prim)) };
+        const int dst_trc{ avs_as_int(avs_array_elt(args, Dst_trc)) };
+
+        if (dst_prim < 1 || dst_prim > 17)
+            return set_error(clip, "libplacebo_Tonemap: dst_prim must be between 1 and 17.");
+        if (dst_trc < 1 || dst_trc > 16)
+            return set_error(clip, "libplacebo_Tonemap: dst_trc must be between 1 and 16.");
+
+        params->dst_pl_csp->primaries = static_cast<pl_color_primaries>(dst_prim);
+        params->dst_pl_csp->transfer = static_cast<pl_color_transfer>(dst_trc);
     }
+    else if (!dst_prim_defined && !dst_trc_defined)
+    {
+        params->dst_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Dst_csp)) ? avs_as_int(avs_array_elt(args, Dst_csp)) : 0);
+        switch (params->dst_csp)
+        {
+            case CSP_SDR: *params->dst_pl_csp.get() = pl_color_space_bt709; break;
+            case CSP_HDR10: *params->dst_pl_csp.get() = pl_color_space_hdr10; break;
+            case CSP_HLG: *params->dst_pl_csp.get() = pl_color_space_bt2020_hlg; break;
+            default: return set_error(clip, "libplacebo_Tonemap: Invalid target colorspace for tonemapping.");
+        }
+    }
+    else
+        return set_error(clip, "libplacebo_Tonemap: dst_prim/dst_trc must be defined.");
 
     const int lut_defined{ avs_defined(avs_array_elt(args, Lut)) };
 
@@ -784,10 +804,41 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->src_repr->sys = PL_COLOR_SYSTEM_BT_2020_NC;
         params->dst_repr->levels = PL_COLOR_LEVELS_LIMITED;
 
-        if (params->dst_pl_csp->transfer == PL_COLOR_TRC_BT_1886)
-            params->dst_repr->sys = PL_COLOR_SYSTEM_BT_709;
-        else if (params->dst_pl_csp->transfer == PL_COLOR_TRC_PQ || params->dst_pl_csp->transfer == PL_COLOR_TRC_HLG)
-            params->dst_repr->sys = PL_COLOR_SYSTEM_BT_2020_NC;
+        if (dst_prim_defined && avs_defined(avs_array_elt(args, Dst_sys)))
+        {
+            const int dst_sys{ avs_as_int(avs_array_elt(args, Dst_sys)) };
+            if (dst_sys < 1 || dst_sys > 9)
+            {
+                if (lut_defined)
+                    pl_lut_free(const_cast<pl_custom_lut**>(&params->render_params->lut));
+
+                return set_error(clip, "libplacebo_Tonemap: dst_sys must be between 1 and 9.");
+            }
+
+            params->dst_repr->sys = static_cast<pl_color_system>(dst_sys);
+        }
+        else
+        {
+            switch (params->dst_pl_csp->transfer)
+            {
+                case PL_COLOR_TRC_BT_1886:
+                case PL_COLOR_TRC_SRGB:
+                case PL_COLOR_TRC_LINEAR:
+                case PL_COLOR_TRC_GAMMA18:
+                case PL_COLOR_TRC_GAMMA20:
+                case PL_COLOR_TRC_GAMMA22:
+                case PL_COLOR_TRC_GAMMA24:
+                case PL_COLOR_TRC_GAMMA26:
+                case PL_COLOR_TRC_GAMMA28:
+                case PL_COLOR_TRC_PRO_PHOTO:
+                case PL_COLOR_TRC_ST428: params->dst_repr->sys = PL_COLOR_SYSTEM_BT_709; break;
+                case PL_COLOR_TRC_PQ:
+                case PL_COLOR_TRC_HLG:
+                case PL_COLOR_TRC_V_LOG:
+                case PL_COLOR_TRC_S_LOG1:
+                case PL_COLOR_TRC_S_LOG2: params->dst_repr->sys = PL_COLOR_SYSTEM_BT_2020_NC; break;
+            }
+        }
 
         fi->vi.pixel_type = AVS_CS_YUV444P16;
     }
