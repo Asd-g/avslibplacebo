@@ -708,13 +708,13 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Controls the interpretation of color values fed to and from the LUT.<br>
     1: native (Applied to raw image contents in its native RGB colorspace (non-linear light), before conversion to the output color space.)<br>
     2: normalized (Applied to the normalized RGB image contents, in linear light, before conversion to the output color space.)<br>
-    3: conversion (Fully replaces the conversion from the input color space to the output color space. It overrides options related to tone mapping and output colorimetry (dst_prim, dst_trc etc.)<br>
+    3: conversion (Fully replaces the conversion from the input color space to the output color space. It overrides options related to tone mapping and output colorimetry (dst_prim, dst_trc etc.))<br>
     Default: 3.
 
 - dst_prim<br>
     Target primaries.<br>
     `dst_trc` must be also specified.<br>
-    `dst_csp` does no effect.
+    `dst_csp` has no effect.
 
     Standard gamut:<br>
     1: BT_601_525 (ITU-R Rec. BT.601 (525-line = NTSC, SMPTE-C))<br>
@@ -741,7 +741,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
 - dst_trc<br>
     Target transfer function.<br>
     `dst_prim` must be also specified.<br>
-    `dst_csp` does no effect.
+    `dst_csp` has no effect.
 
     Standard dynamic range:<br>
     1: BT_1886 (ITU-R Rec. BT.1886 (CRT emulation + OOTF))<br>
@@ -766,8 +766,8 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
 
 - dst_sys<br>
     The underlying color representation.<br>
-    This does no effect if both `dst_prim` and `dst_trc` are not specified.<br>
-    It has effect only for YUV input.<br>
+    This has no effect if both `dst_prim` and `dst_trc` are not specified.<br>
+    This has effect only for YUV input.<br>
     1: BT_601 (ITU-R Rec. BT.601 (SD))<br>
     2: BT_709 (ITU-R Rec. BT.709 (HD))<br>
     3: SMPTE_240M (SMPTE-240M)<br>
