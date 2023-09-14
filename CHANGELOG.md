@@ -1,3 +1,7 @@
+##### 1.4.1:
+    Tonemap: added parameters lut, lut_type.
+    Tonemap: added parameters dst_prim/trc/sys.
+
 ##### 1.4.0:
     Tonemap: added cscale parameter.
     Tonemap: replaced parameters intent, gamut_mode with gamut_mapping_mode.
