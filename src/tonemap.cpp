@@ -248,7 +248,7 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
     AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
 
-    const auto error{ [&](const std::string msg, pl_buf* dst_buf)
+    const auto error{ [&](const std::string& msg, pl_buf* dst_buf)
     {
         avs_release_video_frame(src);
         avs_release_video_frame(dst);
@@ -342,8 +342,9 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
                     if (!header)
                     {
+                        std::string err{ dovi_rpu_get_error(rpu) };
                         dovi_rpu_free(rpu);
-                        return error("libplacebo_Tonemap: failed parsing RPU: " + std::string(dovi_rpu_get_error(rpu)), nullptr);
+                        return error("libplacebo_Tonemap: failed parsing RPU: " + err, nullptr);
                     }
                     else
                     {
@@ -401,6 +402,8 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
 
                     dovi_rpu_free(rpu);
                 }
+                else
+                    return error("libplacebo_Tonemap: invlid DolbyVisionRPU frame property!", nullptr);
             }
         }
         else
