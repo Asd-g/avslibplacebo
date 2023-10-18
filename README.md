@@ -795,7 +795,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Steps:
         Install Vulkan SDk.
         Clone the repo:
-            git clone https://github.com/Asd-g/avslibplacebo
+            git clone --recurse-submodules https://github.com/Asd-g/avslibplacebo
         Set prefix:
             cd avslibplacebo
             set prefix="%cd%\deps"
@@ -804,9 +804,12 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
             cargo install cargo-c
             cargo cinstall --release --prefix %prefix%
         Building libplacebo:
-            cd avslibplacebo\libplacebo
+            cd ..\..\libplacebo
             set LIB=%LIB%;C:\VulkanSDK\1.3.261.1\Lib
-            meson build -Dvulkan-registry=C:\VulkanSDK\1.3.261.1\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix%
+            meson setup build -Dvulkan-registry=C:\VulkanSDK\1.3.261.1\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix%
+            cd build
+            ninja
+            ninja install
         Use solution files to build avs_libplacebo.
     ```
 
