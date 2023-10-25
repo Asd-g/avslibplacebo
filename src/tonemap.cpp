@@ -556,30 +556,26 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
     const int list_device{ avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0 };
 
-    std::vector<VkPhysicalDevice> devices{};
-    VkInstance inst{};
-
     if (list_device || device > -1)
     {
+        std::vector<VkPhysicalDevice> devices{};
+        VkInstance inst{};
+
         AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Tonemap", device, list_device) };
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
-    }
-    else if (device < -1)
-    {
-        vkDestroyInstance(inst, nullptr);
-        return set_error(clip, "libplacebo_Tonemap: device must be greater than or equal to -1.");
-    }
 
-    if (device == -1)
-    {
-        devices.resize(1);
-        params->vf = avs_libplacebo_init(devices[0]);
-    }
-    else
         params->vf = avs_libplacebo_init(devices[device]);
 
-    vkDestroyInstance(inst, nullptr);
+        vkDestroyInstance(inst, nullptr);
+    }
+    else
+    {
+        if (device < -1)
+            return set_error(clip, "libplacebo_Tonemap: device must be greater than or equal to -1.");
+
+        params->vf = avs_libplacebo_init(nullptr);
+    }
 
     params->src_pl_csp = std::make_unique<pl_color_space>();
     params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 1);
@@ -652,7 +648,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
             std::fclose(lut_file);
             params->msg = "libplacebo_Tonemap: error seeking to the end of file " + std::string(lut_path) + " (" + std::strerror(errno) + ")";
             return set_error(clip, params->msg.c_str());
-        }
+    }
         const long lut_size{ std::ftell(lut_file) };
         if (lut_size == -1)
         {
@@ -679,7 +675,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
             return set_error(clip, "libplacebo_Tonemap: lut_type must be between 1 and 3.");
 
         params->render_params->lut_type = static_cast<pl_lut_type>(lut_type);
-    }
+}
     else
     {
         if (params->src_csp == CSP_DOVI)

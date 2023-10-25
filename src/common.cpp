@@ -8,9 +8,6 @@ std::unique_ptr<struct priv> avs_libplacebo_init(VkPhysicalDevice device)
 
     {
         pl_vulkan_params vp{ pl_vulkan_default_params };
-        pl_vk_inst_params ip{ pl_vk_inst_default_params };
-        //    ip.debug = true;
-        vp.instance_params = &ip;
 
         if (device)
         {

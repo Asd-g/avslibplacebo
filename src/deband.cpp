@@ -216,30 +216,26 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
     const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
     const int list_device{ avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0 };
 
-    std::vector<VkPhysicalDevice> devices{};
-    VkInstance inst{};
-
     if (list_device || device > -1)
     {
+        std::vector<VkPhysicalDevice> devices{};
+        VkInstance inst{};
+
         AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Deband", device, list_device) };
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
-    }
-    else if (device < -1)
-    {
-        vkDestroyInstance(inst, nullptr);
-        return set_error(clip, "libplacebo_Deband: device must be greater than or equal to -1.");
-    }
 
-    if (device == -1)
-    {
-        devices.resize(1);
-        params->vf = avs_libplacebo_init(devices[0]);
-    }
-    else
         params->vf = avs_libplacebo_init(devices[device]);
 
-    vkDestroyInstance(inst, nullptr);
+        vkDestroyInstance(inst, nullptr);
+    }
+    else
+    {
+        if (device < -1)
+            return set_error(clip, "libplacebo_Deband: device must be greater than or equal to -1.");
+
+        params->vf = avs_libplacebo_init(nullptr);
+    }
 
     if (avs_bits_per_component(&fi->vi) == 8)
     {

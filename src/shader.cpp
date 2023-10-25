@@ -276,19 +276,25 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
     const int list_device{ avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0 };
 
-    std::vector<VkPhysicalDevice> devices{};
-    VkInstance inst{};
-
     if (list_device || device > -1)
     {
+        std::vector<VkPhysicalDevice> devices{};
+        VkInstance inst{};
+
         AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Shader", device, list_device) };
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
-    }
-    else if (device < -1)
-    {
+
+        params->vf = avs_libplacebo_init(devices[device]);
+
         vkDestroyInstance(inst, nullptr);
-        return set_error(clip, "libplacebo_Shader: device must be greater than or equal to -1.");
+    }
+    else
+    {
+        if (device < -1)
+            return set_error(clip, "libplacebo_Shader: device must be greater than or equal to -1.");
+
+        params->vf = avs_libplacebo_init(nullptr);
     }
 
     const char* shader_path{ avs_as_string(avs_array_elt(args, Shader)) };
@@ -313,7 +319,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
         std::fclose(shader_file);
         params->msg = "libplacebo_Shader: error seeking to the end of file " + std::string(shader_path) + " (" + std::strerror(errno) + ")";
         return set_error(clip, params->msg.c_str());
-    }
+}
 
     const long shader_size{ std::ftell(shader_file) };
 
@@ -332,16 +338,6 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     bdata[shader_size] = '\0';
 
     std::fclose(shader_file);
-
-    if (device == -1)
-    {
-        devices.resize(1);
-        params->vf = avs_libplacebo_init(devices[0]);
-    }
-    else
-        params->vf = avs_libplacebo_init(devices[device]);
-
-    vkDestroyInstance(inst, nullptr);
 
     if (avs_defined(avs_array_elt(args, Shader_param)))
     {
