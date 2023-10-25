@@ -23,7 +23,6 @@ AVS_Value avs_version(const std::string& name, AVS_ScriptEnvironment* env);
 
 struct priv
 {
-    pl_log log;
     pl_vulkan vk;
     pl_gpu gpu;
     pl_dispatch dp;

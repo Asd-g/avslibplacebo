@@ -670,7 +670,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
         std::fclose(lut_file);
 
-        params->render_params->lut = pl_lut_parse_cube(params->vf->log, bdata.c_str(), bdata.size());
+        params->render_params->lut = pl_lut_parse_cube(nullptr, bdata.c_str(), bdata.size());
         if (!params->render_params->lut)
             return set_error(clip, "libplacebo_Tonemap: failed lut parsing.");
 
