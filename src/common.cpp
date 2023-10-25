@@ -5,7 +5,8 @@ static_assert(PL_API_VER >= 269, "libplacebo version must be at least v6.287.0-r
 std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device, std::string& err_msg)
 {
     std::unique_ptr<priv> p{ std::make_unique<priv>() };
-    pl_vulkan_params vp{ pl_vulkan_default_params };
+    pl_vulkan_params vp{};
+    vp.allow_software = true;
 
     if (device)
     {
