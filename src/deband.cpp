@@ -186,7 +186,8 @@ static void AVSC_CC free_deband(AVS_FilterInfo* fi)
 {
     deband* d{ reinterpret_cast<deband*>(fi->user_data) };
 
-    avs_libplacebo_uninit(std::move(d->vf));
+    pl_shader_obj_destroy(&d->vf->dither_state);
+    avs_libplacebo_uninit(d->vf);
     delete d;
 }
 
@@ -209,9 +210,9 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
         return avs_ver;
 
     if (!avs_is_planar(&fi->vi))
-        return set_error(clip, "libplacebo_Deband: clip must be in planar format.");
+        return set_error(clip, "libplacebo_Deband: clip must be in planar format.", nullptr);
     if (avs_bits_per_component(&fi->vi) != 8 && avs_bits_per_component(&fi->vi) != 16 && avs_bits_per_component(&fi->vi) != 32)
-        return set_error(clip, "libplacebo_Deband: bit depth must be 8, 16 or 32-bit.");
+        return set_error(clip, "libplacebo_Deband: bit depth must be 8, 16 or 32-bit.", nullptr);
 
     const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
     const int list_device{ avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0 };
@@ -225,16 +226,22 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
 
-        params->vf = avs_libplacebo_init(devices[device]);
+        params->vf = avs_libplacebo_init(devices[device], params->msg);
 
         vkDestroyInstance(inst, nullptr);
     }
     else
     {
         if (device < -1)
-            return set_error(clip, "libplacebo_Deband: device must be greater than or equal to -1.");
+            return set_error(clip, "libplacebo_Deband: device must be greater than or equal to -1.", nullptr);
 
-        params->vf = avs_libplacebo_init(nullptr);
+        params->vf = avs_libplacebo_init(nullptr, params->msg);
+    }
+
+    if (params->msg.size())
+    {
+        params->msg = "libplacebo_Deband: " + params->msg;
+        return set_error(clip, params->msg.c_str(), nullptr);
     }
 
     if (avs_bits_per_component(&fi->vi) == 8)
@@ -246,11 +253,11 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
             params->dither_params = std::make_unique<pl_dither_params>();
             params->dither_params->method = static_cast<pl_dither_method>(params->dither - 1);
             if (params->dither_params->method < 0 || params->dither_params->method > 4)
-                return set_error(clip, "libplacebo_Deband: dither must be between 0..4");
+                return set_error(clip, "libplacebo_Deband: dither must be between 0..4", params->vf);
 
             params->dither_params->lut_size = (avs_defined(avs_array_elt(args, Lut_size))) ? avs_as_int(avs_array_elt(args, Lut_size)) : 6;
             if (params->dither_params->lut_size > 8)
-                return set_error(clip, "libplacebo_Deband: lut_size must be less than or equal to 8");
+                return set_error(clip, "libplacebo_Deband: lut_size must be less than or equal to 8", params->vf);
 
             params->dither_params->temporal = (avs_defined(avs_array_elt(args, Temporal))) ? avs_as_bool(avs_array_elt(args, Temporal)) : false;
         }
@@ -272,13 +279,13 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 
         const int num_planes{ (avs_defined(avs_array_elt(args, Planes))) ? avs_array_size(avs_array_elt(args, Planes)) : 0 };
         if (num_planes > avs_num_components(&fi->vi))
-            return set_error(clip, "libplacebo_Deband: plane index out of range.");
+            return set_error(clip, "libplacebo_Deband: plane index out of range.", params->vf);
 
         for (int i{ 0 }; i < num_planes; ++i)
         {
             const int plane_v{ avs_as_int(*(avs_as_array(avs_array_elt(args, Planes)) + i)) };
             if (plane_v < 1 || plane_v > 3)
-                return set_error(clip, "libplacebo_Deband: plane must be between 1..3.");
+                return set_error(clip, "libplacebo_Deband: plane must be between 1..3.", params->vf);
 
             params->process[i] = avs_as_int(*(avs_as_array(avs_array_elt(args, Planes)) + i));
         }
@@ -287,37 +294,37 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
     params->deband_params = std::make_unique<pl_deband_params>();
     params->deband_params->iterations = (avs_defined(avs_array_elt(args, Iterations))) ? avs_as_int(avs_array_elt(args, Iterations)) : 1;
     if (params->deband_params->iterations < 0)
-        return set_error(clip, "libplacebo_Deband: iterations must be greater than or equal to 0.");
+        return set_error(clip, "libplacebo_Deband: iterations must be greater than or equal to 0.", params->vf);
 
     params->deband_params->threshold = (avs_defined(avs_array_elt(args, Threshold))) ? avs_as_float(avs_array_elt(args, Threshold)) : 4.0f;
     if (params->deband_params->threshold < 0.0f)
-        return set_error(clip, "libplacebo_Deband: threshold must be greater than or equal to 0.0");
+        return set_error(clip, "libplacebo_Deband: threshold must be greater than or equal to 0.0", params->vf);
 
     params->deband_params->radius = (avs_defined(avs_array_elt(args, Radius))) ? avs_as_float(avs_array_elt(args, Radius)) : 16.0f;
     if (params->deband_params->radius < 0.0f)
-        return set_error(clip, "libplacebo_Deband: radius must be greater than or equal to 0.0");
+        return set_error(clip, "libplacebo_Deband: radius must be greater than or equal to 0.0", params->vf);
 
     if (avs_defined(avs_array_elt(args, Grain_neutral)))
     {
         const int grain_neutral_num{ avs_array_size(avs_array_elt(args, Grain_neutral)) };
         if (grain_neutral_num > avs_num_components(&fi->vi))
-            return set_error(clip, "libplacebo_Deband: grain_neutral index out of range.");
+            return set_error(clip, "libplacebo_Deband: grain_neutral index out of range.", params->vf);
 
         for (int i{ 0 }; i < grain_neutral_num; ++i)
         {
             params->deband_params->grain_neutral[i] = avs_as_float(*(avs_as_array(avs_array_elt(args, Grain_neutral)) + i));
             if (params->deband_params->grain_neutral[i] < 0.0f)
-                return set_error(clip, "libplacebo_Deband: grain_neutral must be greater than or equal to 0.0");
+                return set_error(clip, "libplacebo_Deband: grain_neutral must be greater than or equal to 0.0", params->vf);
         }
     }
 
     params->deband_params->grain = (avs_defined(avs_array_elt(args, Grainy))) ? avs_as_float(avs_array_elt(args, Grainy)) : 6.0f;
     if (params->deband_params->grain < 0.0f)
-        return set_error(clip, "libplacebo_Deband: grainY must be greater than or equal to 0.0");
+        return set_error(clip, "libplacebo_Deband: grainY must be greater than or equal to 0.0", params->vf);
 
     const float grainC{ static_cast<float>((avs_defined(avs_array_elt(args, Grainc))) ? avs_as_float(avs_array_elt(args, Grainc)) : params->deband_params->grain) };
     if (grainC < 0.0f)
-        return set_error(clip, "libplacebo_Deband: grainC must be greater than or equal to 0.0");
+        return set_error(clip, "libplacebo_Deband: grainC must be greater than or equal to 0.0", params->vf);
 
     if (params->deband_params->grain != grainC)
     {

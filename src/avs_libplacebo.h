@@ -15,11 +15,14 @@ extern "C"
 #include "libplacebo/vulkan.h"
 }
 
-std::unique_ptr<struct priv> avs_libplacebo_init(VkPhysicalDevice device);
-void avs_libplacebo_uninit(std::unique_ptr<struct priv> p);
+std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device, std::string& err_msg);
+void avs_libplacebo_uninit(const std::unique_ptr<struct priv>& p);
 
+[[maybe_unused]]
 AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, const std::string& name, const int device, const int list_device);
 AVS_Value avs_version(const std::string& name, AVS_ScriptEnvironment* env);
+[[maybe_unused]]
+AVS_Value set_error(AVS_Clip* clip, const char* error_message, const std::unique_ptr<struct priv>& p);
 
 struct priv
 {
@@ -37,11 +40,3 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
 AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
 AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, void* param);
-
-[[maybe_unused]]
-static AVS_FORCEINLINE AVS_Value set_error(AVS_Clip* clip, const char* error_message)
-{
-    avs_release_clip(clip);
-
-    return avs_new_value_error(error_message);
-}

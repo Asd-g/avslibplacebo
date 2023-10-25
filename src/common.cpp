@@ -2,61 +2,56 @@
 
 static_assert(PL_API_VER >= 269, "libplacebo version must be at least v6.287.0-rc1.");
 
-std::unique_ptr<struct priv> avs_libplacebo_init(VkPhysicalDevice device)
+std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device, std::string& err_msg)
 {
     std::unique_ptr<priv> p{ std::make_unique<priv>() };
+    pl_vulkan_params vp{ pl_vulkan_default_params };
 
+    if (device)
     {
-        pl_vulkan_params vp{ pl_vulkan_default_params };
-
-        if (device)
-        {
-            VkPhysicalDeviceProperties properties{};
-            vkGetPhysicalDeviceProperties(device, &properties);
-            vp.device_name = properties.deviceName;
-        }
-
-        p->vk = pl_vulkan_create(nullptr, &vp);
-        if (!p->vk)
-        {
-            fprintf(stderr, "Failed creating vulkan context\n");
-            goto error;
-        }
-        // Give this a shorter name for convenience
-        p->gpu = p->vk->gpu;
-
-        p->dp = pl_dispatch_create(nullptr, p->gpu);
-        if (!p->dp)
-        {
-            fprintf(stderr, "Failed creating shader dispatch object\n");
-            goto error;
-        }
-
-        p->rr = pl_renderer_create(nullptr, p->gpu);
-        if (!p->rr)
-        {
-            fprintf(stderr, "Failed creating renderer\n");
-            goto error;
-        }
-
-        return p;
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(device, &properties);
+        vp.device_name = properties.deviceName;
     }
 
-error:
-    avs_libplacebo_uninit(std::move(p));
-    return NULL;
+    p->vk = pl_vulkan_create(nullptr, &vp);
+    if (!p->vk)
+    {
+        err_msg = "failed creating vulkan context.";
+        return nullptr;
+    }
+    // Give this a shorter name for convenience
+    p->gpu = p->vk->gpu;
+
+    p->dp = pl_dispatch_create(nullptr, p->gpu);
+    if (!p->dp)
+    {
+        pl_vulkan_destroy(&p->vk);
+        err_msg = "failed creating shader dispatch object.";
+        return nullptr;
+    }
+
+    p->rr = pl_renderer_create(nullptr, p->gpu);
+    if (!p->rr)
+    {
+        pl_dispatch_destroy(&p->dp);
+        pl_vulkan_destroy(&p->vk);
+        err_msg = "failed creating renderer.";
+        return nullptr;
+    }
+
+    return p;
 }
 
-void avs_libplacebo_uninit(std::unique_ptr<struct priv> p)
+void avs_libplacebo_uninit(const std::unique_ptr<struct priv>& p)
 {
     for (int i{ 0 }; i < 4; ++i)
     {
-        pl_tex_destroy(p->gpu, &p->tex_in[i]);
         pl_tex_destroy(p->gpu, &p->tex_out[i]);
+        pl_tex_destroy(p->gpu, &p->tex_in[i]);
     }
 
     pl_renderer_destroy(&p->rr);
-    pl_shader_obj_destroy(&p->dither_state);
     pl_dispatch_destroy(&p->dp);
     pl_vulkan_destroy(&p->vk);
 }
@@ -142,4 +137,14 @@ AVS_Value avs_version(const std::string& name, AVS_ScriptEnvironment* env)
         return avs_new_value_error((name + ": AviSynth+ version must be r3688 or later.").c_str());
 
     return avs_void;
+}
+
+AVS_Value set_error(AVS_Clip* clip, const char* error_message, const std::unique_ptr<struct priv>& p)
+{
+    avs_release_clip(clip);
+
+    if (p)
+        avs_libplacebo_uninit(p);
+
+    return avs_new_value_error(error_message);
 }

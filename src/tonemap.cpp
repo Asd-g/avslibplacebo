@@ -519,7 +519,7 @@ static void AVSC_CC free_tonemap(AVS_FilterInfo* fi)
     if (d->render_params->lut)
         pl_lut_free(const_cast<pl_custom_lut**>(&d->render_params->lut));
 
-    avs_libplacebo_uninit(std::move(d->vf));
+    avs_libplacebo_uninit(d->vf);
     delete d;
 }
 
@@ -547,11 +547,11 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         return avs_ver;
 
     if (!avs_is_planar(&fi->vi))
-        return set_error(clip, "libplacebo_Tonemap: clip must be in planar format.");
+        return set_error(clip, "libplacebo_Tonemap: clip must be in planar format.", nullptr);
     if (avs_bits_per_component(&fi->vi) != 16)
-        return set_error(clip, "libplacebo_Tonemap: bit depth must be 16-bit.");
+        return set_error(clip, "libplacebo_Tonemap: bit depth must be 16-bit.", nullptr);
     if (avs_num_components(&fi->vi) < 3)
-        return set_error(clip, "libplacebo_Tonemap: the clip must have at least three planes.");
+        return set_error(clip, "libplacebo_Tonemap: the clip must have at least three planes.", nullptr);
 
     const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
     const int list_device{ avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0 };
@@ -565,29 +565,35 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
 
-        params->vf = avs_libplacebo_init(devices[device]);
+        params->vf = avs_libplacebo_init(devices[device], params->msg);
 
         vkDestroyInstance(inst, nullptr);
     }
     else
     {
         if (device < -1)
-            return set_error(clip, "libplacebo_Tonemap: device must be greater than or equal to -1.");
+            return set_error(clip, "libplacebo_Tonemap: device must be greater than or equal to -1.", nullptr);
 
-        params->vf = avs_libplacebo_init(nullptr);
+        params->vf = avs_libplacebo_init(nullptr, params->msg);
+    }
+
+    if (params->msg.size())
+    {
+        params->msg = "libplacebo_Tonemap: " + params->msg;
+        return set_error(clip, params->msg.c_str(), nullptr);
     }
 
     params->src_pl_csp = std::make_unique<pl_color_space>();
     params->src_csp = static_cast<supported_colorspace>(avs_defined(avs_array_elt(args, Src_csp)) ? avs_as_int(avs_array_elt(args, Src_csp)) : 1);
     if (params->src_csp == CSP_DOVI && srcIsRGB)
-        return set_error(clip, "libplacebo_Tonemap: Dolby Vision source colorspace must be a YUV clip!");
+        return set_error(clip, "libplacebo_Tonemap: Dolby Vision source colorspace must be a YUV clip!", params->vf);
 
     switch (params->src_csp)
     {
         case CSP_HDR10:
         case CSP_DOVI: *params->src_pl_csp.get() = pl_color_space_hdr10; break;
         case CSP_HLG: *params->src_pl_csp.get() = pl_color_space_bt2020_hlg; break;
-        default: return set_error(clip, "libplacebo_Tonemap: Invalid source colorspace for tonemapping.");
+        default: return set_error(clip, "libplacebo_Tonemap: Invalid source colorspace for tonemapping.", params->vf);
     }
 
     params->dst_pl_csp = std::make_unique<pl_color_space>();
@@ -600,9 +606,9 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         const int dst_trc{ avs_as_int(avs_array_elt(args, Dst_trc)) };
 
         if (dst_prim < 1 || dst_prim > 17)
-            return set_error(clip, "libplacebo_Tonemap: dst_prim must be between 1 and 17.");
+            return set_error(clip, "libplacebo_Tonemap: dst_prim must be between 1 and 17.", params->vf);
         if (dst_trc < 1 || dst_trc > 16)
-            return set_error(clip, "libplacebo_Tonemap: dst_trc must be between 1 and 16.");
+            return set_error(clip, "libplacebo_Tonemap: dst_trc must be between 1 and 16.", params->vf);
 
         params->dst_pl_csp->primaries = static_cast<pl_color_primaries>(dst_prim);
         params->dst_pl_csp->transfer = static_cast<pl_color_transfer>(dst_trc);
@@ -615,11 +621,11 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
             case CSP_SDR: *params->dst_pl_csp.get() = pl_color_space_bt709; break;
             case CSP_HDR10: *params->dst_pl_csp.get() = pl_color_space_hdr10; break;
             case CSP_HLG: *params->dst_pl_csp.get() = pl_color_space_bt2020_hlg; break;
-            default: return set_error(clip, "libplacebo_Tonemap: Invalid target colorspace for tonemapping.");
+            default: return set_error(clip, "libplacebo_Tonemap: Invalid target colorspace for tonemapping.", params->vf);
         }
     }
     else
-        return set_error(clip, "libplacebo_Tonemap: dst_prim/dst_trc must be defined.");
+        return set_error(clip, "libplacebo_Tonemap: dst_prim/dst_trc must be defined.", params->vf);
 
     const int lut_defined{ avs_defined(avs_array_elt(args, Lut)) };
 
@@ -641,20 +647,20 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         if (!lut_file)
         {
             params->msg = "libplacebo_Tonemap: error opening file " + std::string(lut_path) + " (" + std::strerror(errno) + ")";
-            return set_error(clip, params->msg.c_str());
+            return set_error(clip, params->msg.c_str(), params->vf);
         }
         if (std::fseek(lut_file, 0, SEEK_END))
         {
             std::fclose(lut_file);
             params->msg = "libplacebo_Tonemap: error seeking to the end of file " + std::string(lut_path) + " (" + std::strerror(errno) + ")";
-            return set_error(clip, params->msg.c_str());
-    }
+            return set_error(clip, params->msg.c_str(), params->vf);
+        }
         const long lut_size{ std::ftell(lut_file) };
         if (lut_size == -1)
         {
             std::fclose(lut_file);
             params->msg = "libplacebo_Tonemap: error determining the size of file " + std::string(lut_path) + " (" + std::strerror(errno) + ")";
-            return set_error(clip, params->msg.c_str());
+            return set_error(clip, params->msg.c_str(), params->vf);
         }
 
         std::rewind(lut_file);
@@ -668,14 +674,17 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
         params->render_params->lut = pl_lut_parse_cube(nullptr, bdata.c_str(), bdata.size());
         if (!params->render_params->lut)
-            return set_error(clip, "libplacebo_Tonemap: failed lut parsing.");
+            return set_error(clip, "libplacebo_Tonemap: failed lut parsing.", params->vf);
 
         const int lut_type{ (avs_defined(avs_array_elt(args, Lut_type))) ? avs_as_int(avs_array_elt(args, Lut_type)) : 3 };
         if (lut_type < 1 || lut_type > 3)
-            return set_error(clip, "libplacebo_Tonemap: lut_type must be between 1 and 3.");
+        {
+            pl_lut_free(const_cast<pl_custom_lut**>(&params->render_params->lut));
+            return set_error(clip, "libplacebo_Tonemap: lut_type must be between 1 and 3.", params->vf);
+        }
 
         params->render_params->lut_type = static_cast<pl_lut_type>(lut_type);
-}
+    }
     else
     {
         if (params->src_csp == CSP_DOVI)
@@ -708,7 +717,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
                 case 7: params->colorMapParams->gamut_mapping = &pl_gamut_map_darken; break;
                 case 8: params->colorMapParams->gamut_mapping = &pl_gamut_map_highlight; break;
                 case 9: params->colorMapParams->gamut_mapping = &pl_gamut_map_linear; break;
-                default: return set_error(clip, "libplacebo_Tonemap: wrong gamut_mapping_mode.");
+                default: return set_error(clip, "libplacebo_Tonemap: wrong gamut_mapping_mode.", params->vf);
             }
         }
 
@@ -727,9 +736,9 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->colorMapParams->contrast_smoothness = (avs_defined(avs_array_elt(args, Contrast_smoothness))) ? avs_as_float(avs_array_elt(args, Contrast_smoothness)) : 3.5f;
 
         if (params->colorMapParams->contrast_recovery < 0.0f)
-            return set_error(clip, "libplacebo_Tonemap: contrast_recovery must be equal to or greater than 0.0f.");
+            return set_error(clip, "libplacebo_Tonemap: contrast_recovery must be equal to or greater than 0.0f.", params->vf);
         if (params->colorMapParams->contrast_smoothness < 0.0f)
-            return set_error(clip, "libplacebo_Tonemap: contrast_smoothness must be equal to or greater than 0.0f.");
+            return set_error(clip, "libplacebo_Tonemap: contrast_smoothness must be equal to or greater than 0.0f.", params->vf);
 
         params->peakDetectParams = std::make_unique<pl_peak_detect_params>(pl_peak_detect_default_params);
         if (avs_defined(avs_array_elt(args, Smoothing_period)))
@@ -777,7 +786,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         if (lut_defined)
             pl_lut_free(const_cast<pl_custom_lut**>(&params->render_params->lut));
 
-        return set_error(clip, "libplacebo_Tonemap: not a valid cscale.");
+        return set_error(clip, "libplacebo_Tonemap: not a valid cscale.", params->vf);
     }
 
     params->render_params->plane_upscaler = cscaler->filter;
@@ -811,7 +820,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
                 if (lut_defined)
                     pl_lut_free(const_cast<pl_custom_lut**>(&params->render_params->lut));
 
-                return set_error(clip, "libplacebo_Tonemap: dst_sys must be between 1 and 9.");
+                return set_error(clip, "libplacebo_Tonemap: dst_sys must be between 1 and 9.", params->vf);
             }
 
             params->dst_repr->sys = static_cast<pl_color_system>(dst_sys);
