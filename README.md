@@ -131,7 +131,7 @@ libplacebo_Deband(clip input, int "iterations", float "threshold", float "radius
 #### Usage:
 
 ```
-libplacebo_Resample(clip input, int width, int height, string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "sx", float "sy", float "antiring", float "lut_entries", float "cutoff", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", int "trc", int "cplace", int "device", bool "list_device", float "src_width", float "src_height")
+libplacebo_Resample(clip input, int width, int height, string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "sx", float "sy", float "antiring", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", int "trc", int "cplace", int "device", bool "list_device", float "src_width", float "src_height")
 ```
 
 #### Parameters:
@@ -148,32 +148,39 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 
 - filter
     The used filter function.
-    * spline16 (2 taps)
-    * spline36 (3 taps)
-    * spline64 (4 taps)
-    * nearest (AKA box)
-    * bilinear (AKA triangle) (resizable)
-    * gaussian (resizable)
+
+    * `spline16` (2 taps)
+    * `spline36` (3 taps)
+    * `spline64` (4 taps)
+    * `nearest` (AKA box)
+    * `bilinear` (AKA triangle) (resizable)
+    * `gaussian` (resizable)
 
     Sinc family (all configured to 3 taps):
-    * sinc (unwindowed) (resizable)
-    * lanczos (sinc-sinc) (resizable)
-    * ginseng (sinc-jinc) (resizable)
-    * ewa_jinc (unwindowed) (resizable)
-    * ewa_lanczos (jinc-jinc) (resizable)
-    * ewa_ginseng (jinc-sinc) (resizable)
-    * ewa_hann (jinc-hann) (resizable)
+    * `sinc` (unwindowed) (resizable)
+    * `lanczos` (sinc-sinc) (resizable)
+    * `ginseng` (sinc-jinc) (resizable)
+    * `ewa_jinc` (unwindowed) (resizable)
+    * `ewa_lanczos` (jinc-jinc) (resizable)
+    * `ewa_lanczossharp` (jinc-jinc) (resizable)
+    * `ewa_lanczos4sharpest` (jinc-jinc) (resizable)
+    * `ewa_ginseng` (jinc-sinc) (resizable)
+    * `ewa_hann` (jinc-hann) (resizable)
+    * `ewa_hanning` (ewa_hann alias)
 
     Spline family:
-    * bicubic
-    * catmull_rom
-    * mitchell
-    * robidoux
-    * robidouxsharp
-    * ewa_robidoux
-    * ewa_robidouxsharp
+    * `bicubic`
+    * `triangle` (bicubic alias)
+    * `hermite`
+    * `catmull_rom`
+    * `mitchell`
+    * `mitchell_clamp`
+    * `robidoux`
+    * `robidouxsharp`
+    * `ewa_robidoux`
+    * `ewa_robidouxsharp`
 
-    Default: "ewa_lanczos"
+    Default: `ewa_lanczos`
 
 - radius<br>
     It may be used to adjust the function's radius.<br>
@@ -216,18 +223,6 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     Antiringing strength.<br>
     A value of 0.0 disables antiringing, and a value of 1.0 enables full-strength antiringing.<br>
     Only relevant for separated/orthogonal filters.<br>
-    Default: 0.0.
-
-- lut_entries<br>
-    The precision of the LUT.<br>
-    A value of 64 should be fine for most practical purposes, but higher or lower values may be justified depending on the use case.<br>
-    Must be greater than 0.<br>
-    Default: 64.
-
-- cutoff<br>
-    As a micro-optimization, all samples below this cutoff value will be ignored when updating the cutoff radius.<br>
-    Setting it to a value of 0.0 disables this optimization.<br>
-    Only relevant for polar filters.<br>
     Default: 0.0.
 
 - sigmoidize, linearize<br>
@@ -305,7 +300,7 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 #### Usage:
 
 ```
-libplacebo_Shader(clip input, string shader, int "width", int "height", int "chroma_loc", int "matrix", int "trc",  string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "antiring", float "lut_entries", float "cutoff", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", string "shader_param", int "device", bool "list_device")
+libplacebo_Shader(clip input, string shader, int "width", int "height", int "chroma_loc", int "matrix", int "trc",  string "filter", float "radius", float "clamp", float "taper", float "blur", float "param1", float "param2", float "antiring", bool "sigmoidize", bool "linearize", float "sigmoid_center", float "sigmoid_slope", string "shader_param", int "device", bool "list_device")
 ```
 
 #### Parameters:
@@ -378,32 +373,39 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 
 - filter
     The used filter function.
-    * spline16 (2 taps)
-    * spline36 (3 taps)
-    * spline64 (4 taps)
-    * nearest (AKA box)
-    * bilinear (AKA triangle) (resizable)
-    * gaussian (resizable)
+
+    * `spline16` (2 taps)
+    * `spline36` (3 taps)
+    * `spline64` (4 taps)
+    * `nearest` (AKA box)
+    * `bilinear` (AKA triangle) (resizable)
+    * `gaussian` (resizable)
 
     Sinc family (all configured to 3 taps):
-    * sinc (unwindowed) (resizable)
-    * lanczos (sinc-sinc) (resizable)
-    * ginseng (sinc-jinc) (resizable)
-    * ewa_jinc (unwindowed) (resizable)
-    * ewa_lanczos (jinc-jinc) (resizable)
-    * ewa_ginseng (jinc-sinc) (resizable)
-    * ewa_hann (jinc-hann) (resizable)
+    * `sinc` (unwindowed) (resizable)
+    * `lanczos` (sinc-sinc) (resizable)
+    * `ginseng` (sinc-jinc) (resizable)
+    * `ewa_jinc` (unwindowed) (resizable)
+    * `ewa_lanczos` (jinc-jinc) (resizable)
+    * `ewa_lanczossharp` (jinc-jinc) (resizable)
+    * `ewa_lanczos4sharpest` (jinc-jinc) (resizable)
+    * `ewa_ginseng` (jinc-sinc) (resizable)
+    * `ewa_hann` (jinc-hann) (resizable)
+    * `ewa_hanning` (ewa_hann alias)
 
     Spline family:
-    * bicubic
-    * catmull_rom
-    * mitchell
-    * robidoux
-    * robidouxsharp
-    * ewa_robidoux
-    * ewa_robidouxsharp
+    * `bicubic`
+    * `triangle` (bicubic alias)
+    * `hermite`
+    * `catmull_rom`
+    * `mitchell`
+    * `mitchell_clamp`
+    * `robidoux`
+    * `robidouxsharp`
+    * `ewa_robidoux`
+    * `ewa_robidouxsharp`
 
-    Default: "ewa_lanczos"
+    Default: `ewa_lanczos`
 
 - radius<br>
     It may be used to adjust the function's radius.<br>
@@ -438,18 +440,6 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     Antiringing strength.<br>
     A value of 0.0 disables antiringing, and a value of 1.0 enables full-strength antiringing.<br>
     Only relevant for separated/orthogonal filters.<br>
-    Default: 0.0.
-
-- lut_entries<br>
-    The precision of the LUT.<br>
-    A value of 64 should be fine for most practical purposes, but higher or lower values may be justified depending on the use case.<br>
-    Must be greater than 0.<br>
-    Default: 64.
-
-- cutoff<br>
-    As a micro-optimization, all samples below this cutoff value will be ignored when updating the cutoff radius.<br>
-    Setting it to a value of 0.0 disables this optimization.<br>
-    Only relevant for polar filters.<br>
     Default: 0.0.
 
 - sigmoidize, linearize<br>
@@ -496,7 +486,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 #### Usage:
 
 ```
-libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", int "gamut_mapping_mode", int "tone_mapping_function", int "tone_mapping_mode", float "tone_mapping_param", float "tone_mapping_crosstalk", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale", string "lut", int "lut_type", int "dst_prim", int "dst_trc", int "dst_sys")
+libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", string "gamut_mapping_mode", string "tone_mapping_function", string[] "tone_constants", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale", string "lut", int "lut_type", int "dst_prim", int "dst_trc", int "dst_sys")
 ```
 
 #### Parameters:
@@ -529,13 +519,13 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Smoothing coefficient for the detected values.<br>
     This controls the time parameter (tau) of an IIR low pass filter. In other words, it represent the cutoff period (= 1 / cutoff frequency) in frames. Frequencies below this length will be suppressed.<br>
     This helps block out annoying "sparkling" or "flickering" due to small variations in frame-to-frame brightness.<br>
-    Default: 100.0.
+    Default: 20.0.
 
 - scene_threshold_low, scene_threshold_high<br>
     In order to avoid reacting sluggishly on scene changes as a result of the low-pass filter, we disable it when the difference between the current frame brightness and the average frame brightness exceeds a given threshold difference.<br>
     But rather than a single hard cutoff, which would lead to weird discontinuities on fades, we gradually disable it over a small window of brightness ranges. These parameters control the lower and upper bounds of this window, in dB.<br>
     To disable this logic entirely, set either one to a negative value.<br>
-    Default: scene_threshold_low = 5.5; scene_threshold_high = 10.0
+    Default: scene_threshold_low = 1.0; scene_threshold_high = 3.0
 
 - percentile<br>
     Which percentile of the input image brightness histogram to consider as the true peak of the scene.<br>
@@ -545,83 +535,126 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
 
 - gamut_mapping_mode<br>
     Specifies the algorithm used for reducing the gamut of images for the target display, after any tone mapping is done.<br>
-    0: auto (Choose the best mode automatically.)<br>
-    1: clip (Hard-clip to the gamut (per-channel). Very low quality, but free.)<br>
-    2: perceptual (Performs a perceptually balanced gamut mapping using a soft knee function to roll-off clipped regions, and a hue shifting function to preserve saturation.)<br>
-    3: relative (Performs relative colorimetric clipping, while maintaining an exponential relationship between brightness and chromaticity.)<br>
-    4: saturation (Performs simple RGB->RGB saturation mapping. The input R/G/B channels are mapped directly onto the output R/G/B channels. Will never clip, but will distort all hues and/or result in a faded look.)<br>
-    5: absolute (Performs absolute colorimetric clipping. Like `relative`, but does not adapt the white point.)<br>
-    6: desaturate (Performs constant-luminance colorimetric clipping, desaturing colors towards white until they're in-range.)<br>
-    7: darken (Uniformly darkens the input slightly to prevent clipping on blown-out highlights, then clamps colorimetrically to the input gamut boundary, biased slightly to preserve chromaticity over luminance.)<br>
-    8: warn (Performs no gamut mapping, but simply highlights out-of-gamut pixels.)<br>
-    9: linear (Linearly/uniformly desaturates the image in order to bring the entire image into the target gamut.)<br>
-    Default: 0.
 
-- tone_mapping_function<br>
-    0: auto (Special tone mapping function that means "automatically pick a good function based on the HDR levels")<br>
-    1: clip (Performs no tone-mapping, just clips out-of-range colors.<br>
-    Retains perfect color accuracy for in-range colors but completely destroys out-of-range information.<br>
-    Does not perform any black point adaptation.)<br>
-    2: st2094_40 (EETF from SMPTE ST 2094-40 Annex B, which uses the provided OOTF based on Bezier curves to perform tone-mapping.<br>
-    The OOTF used is adjusted based on the ratio between the targeted and actual display peak luminances.<br>
-    In the absence of HDR10+ metadata, falls back to a simple constant bezier curve with tunable knee point.<br>
-    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.7.)<br>
-    3: st2094_10 (EETF from SMPTE ST 2094-10 Annex B.2, which takes into account the input signal average luminance in addition to the maximum/minimum.<br>
-    The `tone_mapping_param` gives the target brightness adaptation strength for the knee point, defaulting to 0.5.<br>
-    Note: This does *not* currently include the subjective gain/offset/gamma controls defined in Annex B.3.)<br>
-    4: bt2390 (EETF from the ITU-R Report BT.2390, a hermite spline roll-off with linear segment.<br>
-    The knee point offset is configurable. Note that this defaults to 1.0, rather than the value of 0.5 from the ITU-R spec.)<br>
-    5: bt2446a (EETF from ITU-R Report BT.2446, method A.<br>
-    Can be used for both forward and inverse tone mapping. Not configurable.)<br>
-    6: spline (Simple spline consisting of two polynomials, joined by a single pivot point.<br>
-    Simple spline consisting of two polynomials, joined by a single pivot point, which is tuned based on the source scene average brightness (taking into account HDR10+ metadata if available).<br>
-    The `tone_mapping_param` can be used to tune the desired subjective contrast characteristics.<br>
-    Higher values make the curve steeper (closer to `clip`), preserving midtones at the cost of losing shadow/highlight details, while lower values make the curve shallower (closer to `linear`), preserving highlights at the cost of losing midtone contrast.<br>
-    Values above 1.0 are possible, resulting in an output with more contrast than the input.<br>
-    The default value is 0.5.<br>
-    This function can be used for both forward and inverse tone mapping.<br>
-    7: reinhard (Simple non-linear, global tone mapping algorithm.<br>
-    Named after Erik Reinhard.<br>
-    The `tone_mapping_param` specifies the local contrast coefficient at the display peak.<br>
-    Essentially, a value of param=0.5 implies that the reference white will be about half as bright as when clipping.<br>
-    Defaults to 0.5, which results in the simplest formulation of this function.)<br>
-    8: mobius (Generalization of the reinhard tone mapping algorithm to support an additional linear slope near black.<br>
-    The tone mapping `tone_mapping_param` indicates the trade-off between the linear section and the non-linear section.<br>
-    Essentially, for param=0.5, every color value below 0.5 will be mapped linearly, with the higher values being non-linearly tone mapped.<br>
-    Values near 1.0 make this curve behave like `clip`, and values near 0.0 make this curve behave like `reinhard`.<br>
-    The default value is 0.3, which provides a good balance between colorimetric accuracy and preserving out-of-gamut details.<br>
-    The name is derived from its function shape (ax+b)/(cx+d), which is known as a Möbius transformation in mathematics.)<br>
-    9: hable (Piece-wise, filmic tone-mapping algorithm developed by John Hable for use in Uncharted 2, inspired by a similar tone-mapping algorithm used by Kodak.<br>
-    Popularized by its use in video games with HDR rendering.<br>
-    Preserves both dark and bright details very well, but comes with the drawback of changing the average brightness quite significantly.<br>
-    This is sort of similar to `reinhard` with `tone_mapping_param` 0.24.)<br>
-    10: gamma (Fits a gamma (power) function to transfer between the source and target color spaces, effectively resulting in a perceptual hard-knee joining two roughly linear sections.<br>
-    This preserves details at all scales fairly accurately, but can result in an image with a muted or dull appearance.<br>
-    The `tone_mapping_param` is used as the cutoff point, defaulting to 0.5.)<br>
-    11: linear (Linearly stretches the input range to the output range, in PQ space.<br>
-    This will preserve all details accurately, but results in a significantly different average brightness.<br>
-    Can be used for inverse tone-mapping in addition to regular tone-mapping.<br>
-    The parameter can be used as an additional linear gain coefficient (defaulting to 1.0).)<br>
-    Default: 0.
+    * `clip`: Hard-clip to the gamut (per-channel). Very low quality, but free.
 
-- tone_mapping_mode<br>
-    0: AUTO (Picks the best tone-mapping mode based on internal heuristics.)<br>
-    1: RGB (Per-channel tone-mapping in RGB. Guarantees no clipping and heavily desaturates the output, but distorts the colors quite significantly.)<br>
-    2: MAX (Tone-mapping is performed on the brightest component found in the signal.<br>
-    Good at preserving details in highlights, but has a tendency to crush blacks.)<br>
-    3: HYBRID (Tone-map per-channel for highlights and linearly (luma-based) for midtones/shadows, based on a fixed gamma 2.4 coefficient curve.)<br>
-    4: LUMA (Tone-map linearly on the luma component, and adjust (desaturate) the chromaticities to compensate using a simple constant factor.<br>
-    This is essentially the mode used in ITU-R BT.2446 method A.)<br>
-    Default: 0.
+    * `perceptual`: Performs a perceptually balanced gamut mapping using a soft knee function to roll-off clipped regions, and a hue shifting function to preserve saturation.
 
-- tone_mapping_param<br>
-    The tone-mapping curve parameter.<br>
-    Default: Default for the selected `tone_mapping_function`.
+    * `softclip`: Performs a perceptually balanced gamut mapping using a soft knee function to roll-off clipped regions, and a hue shifting function to preserve saturation.
 
-- tone_mapping_crosstalk<br>
-    Extra crosstalk factor to apply before tone-mapping.<br>
-    May help to improve the appearance of very bright, monochromatic highlights.<br>
-    Default: 0.04.
+    * `relative`: Performs relative colorimetric clipping, while maintaining an exponential relationship between brightness and chromaticity.
+
+    * `saturation`: Performs simple RGB->RGB saturation mapping. The input R/G/B channels are mapped directly onto the output R/G/B channels. Will never clip, but will distort all hues and/or result in a faded look.
+
+    * `absolute`: Performs absolute colorimetric clipping. Like `relative`, but does not adapt the white point.
+
+    * `desaturate`: Performs constant-luminance colorimetric clipping, desaturing colors towards white until they're in-range.
+
+    * `darken`: Uniformly darkens the input slightly to prevent clipping on blown-out highlights, then clamps colorimetrically to the input gamut boundary, biased slightly to preserve chromaticity over luminance.
+
+    * `highlight`: Performs no gamut mapping, but simply highlights out-of-gamut pixels.
+
+    * `linear`: Linearly/uniformly desaturates the image in order to bring the entire image into the target gamut.
+
+    Default: `perceptual`.
+
+- tone_mapping_function
+
+    * `clip`: Performs no tone-mapping, just clips out-of-range colors.<br>
+        Retains perfect color accuracy for in-range colors but completely destroys out-of-range information.<br>
+        Does not perform any black point adaptation.
+
+    * `st2094-40`: EETF from SMPTE ST 2094-40 Annex B, which uses the provided OOTF based on Bezier curves to perform tone-mapping.<br>
+        The OOTF used is adjusted based on the ratio between the targeted and actual display peak luminances.<br>
+        In the absence of HDR10+ metadata, falls back to a simple constant bezier curve.<br>
+
+    * `st2094-10`: EETF from SMPTE ST 2094-10 Annex B.2, which takes into account the input signal average luminance in addition to the maximum/minimum.<br>
+        Note: This does *not* currently include the subjective gain/offset/gamma controls defined in Annex B.3.
+
+    * `bt2390`: EETF from the ITU-R Report BT.2390, a hermite spline roll-off with linear segment.<br>
+
+    * `bt2446a`: EETF from ITU-R Report BT.2446, method A.<br>
+        Can be used for both forward and inverse tone mapping.
+
+    * `spline`: Simple spline consisting of two polynomials, joined by a single pivot point.<br>
+        Simple spline consisting of two polynomials, joined by a single pivot point, which is tuned based on the source scene average brightness (taking into account HDR10+ metadata if available).<br>
+        This function can be used for both forward and inverse tone mapping.
+
+    * `reinhard`: Very simple non-linear curve.<br>
+        Named after Erik Reinhard.<br>
+
+    * `mobius`: Generalization of the `reinhard` tone mapping algorithm to support an additional linear slope near black.<br>
+        The name is derived from its function shape `(ax+b)/(cx+d)`, which is known as a Möbius transformation.<br>
+        This function is considered legacy/low-quality, and should not be used.
+
+    * `hable`: Piece-wise, filmic tone-mapping algorithm developed by John Hable for use in Uncharted 2, inspired by a similar tone-mapping algorithm used by Kodak.<br>
+        Popularized by its use in video games with HDR rendering.<br>
+        Preserves both dark and bright details very well, but comes with the drawback of changing the average brightness quite significantly.<br>
+        This is sort of similar to `reinhard` with `reinhard_contrast=0.24`.<br>
+        This function is considered legacy/low-quality, and should not be used.
+
+    * `gamma`: Fits a gamma (power) function to transfer between the source and target color spaces, effectively resulting in a perceptual hard-knee joining two roughly linear sections.<br>
+        This preserves details at all scales fairly accurately, but can result in an image with a muted or dull appearance.<br>
+        This function is considered legacy/low-quality and should not be used.
+
+    * `linear`: Linearly stretches the input range to the output range, in PQ space.<br>
+        This will preserve all details accurately, but results in a significantly different average brightness.<br>
+        Can be used for inverse tone-mapping in addition to regular tone-mapping.<br>
+
+    * `linearlight`: Like `linear`, but in linear light (instead of PQ).<br>
+        Works well for small range adjustments but may cause severe darkening when downconverting from e.g. 10k nits to SDR.
+
+    Default: `bt2390`.
+
+- tone_constants<br>
+    Tone mapping constants for tuning `tone_mapping_function`.<br>
+    Format is `tone_constants=["option=xxx", "option1=xxx", "option2=xxx"]`. For example, `tone_constants=["exposure=0.25"]`.
+
+    * `knee_adaptation`: Configures the knee point, as a ratio between the source average and target average (in PQ space).<br>
+        An adaptation of 1.0 always adapts the source scene average brightness to the (scaled) target average, while a value of 0.0 never modifies scene brightness.<br>
+        Must be between 0.0..1.0.<br>
+        Affects all methods that use the ST2094 knee point determination (currently ST2094-40, ST2094-10 and spline).<br>
+        Default: 0.4.
+
+    * `knee_minimum`, `knee_maximum`: Configures the knee point minimum and maximum, respectively, as a percentage of the PQ luminance range.<br>
+        Provides a hard limit on the knee point chosen by `knee_adaptation`.<br>
+        `knee_minimum` must be between 0.0..0.5.<br>
+        `knee_maximum` must be between 0.5..1.0.<br>
+        Default: `knee_minimum` 0.1; `knee_maximum` 0.8.
+
+    * `knee_default`: Default knee point to use in the absence of source scene average metadata.<br>
+        Normally, this is ignored in favor of picking the knee point as the (relative) source scene average brightness level.<br>
+        Must be between `knee_minimum` and `knee_maximum`.<br>
+        Default: 0.4.
+
+    * `knee_offset`: Knee point offset (for BT.2390 only).<br>
+        Note that a value of 0.5 is the spec-defined default behavior, which differs from the libplacebo default of 1.0.<br>
+        Must be between 0.5..2.0.
+
+    * `slope_tuning`, `slope_offset`: For the single-pivot polynomial (spline) function, this controls the coefficients used to tune the slope of the curve.<br>
+        This tuning is designed to make the slope closer to 1.0 when the difference in peaks is low, and closer to linear when the difference between peaks is high.<br>
+        `slope_tuning` must be between 0.0..10.0.<br>
+        `slope_offset` must be between 0.0..1.0.<br>
+        Default: `slope_tuning` 1.5; `slope_offset` 0.2.
+
+    * `spline_contrast`: Contrast setting for the spline function.<br>
+        Higher values make the curve steeper (closer to `clip`), preserving midtones at the cost of losing shadow/highlight details, while lower values make the curve shallowed (closer to `linear`), preserving highlights at the cost of losing midtone contrast.<br>
+        Values above 1.0 are possible, resulting in an output with more contrast than the input.<br>
+        Must be between 0.0..1.5.<br>
+        Default: 0.5.
+
+    * `reinhard_contrast`: For the reinhard function, this specifies the local contrast coefficient at the display peak.<br>
+        Essentially, a value of 0.5 implies that the reference white will be about half as bright as when clipping. (0,1).
+        Must be between 0.0..1.0.<br>
+        Default: 0.5.
+
+    * `linear_knee`: For legacy functions (`mobius`, `gamma`) which operate on linear light, this directly sets the corresponding knee point.<br>
+        Must be between 0.0..1.0<br>
+        Default: 0.3.
+
+    * `exposure`: For linear methods (`linear`, `linearlight`), this controls the linear exposure/gain applied to the image.<br>
+        Must be between 0.0..10.0.<br>
+        Default: 1.0.
 
 - metadata<br>
     Data source to use when tone-mapping.<br>
@@ -643,7 +676,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Contrast recovery lowpass kernel size.<br>
     Increasing or decreasing this will affect the visual appearance substantially.<br>
     Must be equal to or greater than 0.0.<br>
-    Default: 0.35.
+    Default: 3.5.
 
 - visualize_lut<br>
     Visualize the tone-mapping curve / LUT. (PQ-PQ graph)<br>
@@ -671,32 +704,38 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     The scaler for chroma planes.<br>
     This is used when the input is YUV420/YUV422.
 
-    * spline16 (2 taps)
-    * spline36 (3 taps)
-    * spline64 (4 taps)
-    * nearest (AKA box)
-    * bilinear (AKA triangle) (resizable)
-    * gaussian (resizable)
+    * `spline16` (2 taps)
+    * `spline36` (3 taps)
+    * `spline64` (4 taps)
+    * `nearest` (AKA box)
+    * `bilinear` (AKA triangle) (resizable)
+    * `gaussian` (resizable)
 
     Sinc family (all configured to 3 taps):
-    * sinc (unwindowed) (resizable)
-    * lanczos (sinc-sinc) (resizable)
-    * ginseng (sinc-jinc) (resizable)
-    * ewa_jinc (unwindowed) (resizable)
-    * ewa_lanczos (jinc-jinc) (resizable)
-    * ewa_ginseng (jinc-sinc) (resizable)
-    * ewa_hann (jinc-hann) (resizable)
+    * `sinc` (unwindowed) (resizable)
+    * `lanczos` (sinc-sinc) (resizable)
+    * `ginseng` (sinc-jinc) (resizable)
+    * `ewa_jinc` (unwindowed) (resizable)
+    * `ewa_lanczos` (jinc-jinc) (resizable)
+    * `ewa_lanczossharp` (jinc-jinc) (resizable)
+    * `ewa_lanczos4sharpest` (jinc-jinc) (resizable)
+    * `ewa_ginseng` (jinc-sinc) (resizable)
+    * `ewa_hann` (jinc-hann) (resizable)
+    * `ewa_hanning` (ewa_hann alias)
 
     Spline family:
-    * bicubic
-    * catmull_rom
-    * mitchell
-    * robidoux
-    * robidouxsharp
-    * ewa_robidoux
-    * ewa_robidouxsharp
+    * `bicubic`
+    * `triangle` (bicubic alias)
+    * `hermite`
+    * `catmull_rom`
+    * `mitchell`
+    * `mitchell_clamp`
+    * `robidoux`
+    * `robidouxsharp`
+    * `ewa_robidoux`
+    * `ewa_robidouxsharp`
 
-    Default: "spline36"
+    Default: `spline36`.
 
 - lut<br>
     Path to the color mapping LUT.<br>
@@ -786,10 +825,10 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
 - Windows
     ```
     Requirements:
-        - Clang-cl (https://github.com/llvm/llvm-project/releases)
+        - Clang-cl (https://github.com/llvm/llvm-project/releases) / GCC
         - Vulkan SDK (https://vulkan.lunarg.com/sdk/home#windows)
         - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
-        - libplacebo (https://gitlab.com/uvz/libplacebo) (v6.287.0-rc1 or later)
+        - libplacebo (https://gitlab.com/uvz/libplacebo) (v6.338.1 or later)
     ```
     ```
     Steps:
@@ -805,8 +844,8 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
             cargo cinstall --release --prefix %prefix%
         Building libplacebo:
             cd ..\..\libplacebo
-            set LIB=%LIB%;C:\VulkanSDK\1.3.261.1\Lib
-            meson setup build -Dvulkan-registry=C:\VulkanSDK\1.3.261.1\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix%
+            set LIB=%LIB%;C:\VulkanSDK\1.3.268.0\Lib
+            meson setup build -Dvulkan-registry=C:\VulkanSDK\1.3.268.0\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix%
             cd build
             ninja
             ninja install
@@ -818,7 +857,7 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     Requirements:
         - Vulkan lib
         - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
-        - libplacebo (https://code.videolan.org/videolan/libplacebo) (v6.287.0-rc1 or later)
+        - libplacebo (https://code.videolan.org/videolan/libplacebo) (v6.338.1 or later)
         - AviSynth lib
     ```
 

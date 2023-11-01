@@ -1,3 +1,19 @@
+##### 1.5.0:
+    Fixed more error messages.
+    Moved some memory freeing right after the plane is downloaded.
+    Resample/Shader: removed parameters `lut_entries` and `cutoff`.
+    Added filter/cscale `ewa_lanczossharp`, `ewa_lanczos4sharpest` and `mitchell_clamp`.
+    Tonemap: changed the type of `gamut_mapping_mode` and `tone_mapping_function` from `int` to `string`.
+    Tonemap: removed parameters `tone_mapping_mode`, `tone_mapping_param`, `tone_mapping_crosstalk`.
+    Tonemap: changed default value of `smoothing_period` from `100.0` to `20.0`.
+    Tonemap: changed default value of `scene_threshold_low` from `5.5` to `1.0`.
+    Tonemap: changed default value of `scene_threshold_high` from `10.0` to `3.0`.
+    Tonemap: removed `gamut_mapping_mode` `auto` and changed default value to `perceptual`.
+    Tonemap: added `gamut_mapping_mode` `softclip`.
+    Tonemap: removed `tone_mapping_function` `auto` and changed default value to `bt2390`.
+    Tonemap: added `tone_mapping_function` `linearlight`.
+    Tonemap: added parameter `tone_constants`.
+
 ##### 1.4.1:
     Tonemap: added parameters lut, lut_type.
     Tonemap: added parameters dst_prim/trc/sys.

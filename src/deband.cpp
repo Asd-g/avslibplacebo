@@ -110,27 +110,25 @@ static AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
 
     AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
 
-    constexpr int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
-    constexpr int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
+    constexpr int planes_y[4]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
+    constexpr int planes_r[4]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
     const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
     const int num_planes{ std::min(avs_num_components(&fi->vi), 3) };
+    pl_plane_data plane{};
+    plane.type = (avs_component_size(&fi->vi) < 4) ? PL_FMT_UNORM : PL_FMT_FLOAT;
+    plane.component_size[0] = avs_bits_per_component(&fi->vi);
 
-    for (int i{ 0 }; i < num_planes; ++i)
+    for (int i{ 0 }; i < num_planes && !ErrorText; ++i)
     {
         if (d->process[i] == 2)
             avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, planes[i]), avs_get_pitch_p(dst, planes[i]), avs_get_read_ptr_p(src, planes[i]), avs_get_pitch_p(src, planes[i]), avs_get_row_size_p(src, planes[i]), avs_get_height_p(src, planes[i]));
         else if (d->process[i] == 3)
         {
-            pl_plane_data plane{};
-            plane.type = (avs_component_size(&fi->vi) < 4) ? PL_FMT_UNORM : PL_FMT_FLOAT;
             plane.width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
             plane.height = avs_get_height_p(src, planes[i]);
             plane.pixel_stride = avs_component_size(&fi->vi);
             plane.row_stride = avs_get_pitch_p(src, planes[i]);
             plane.pixels = avs_get_read_ptr_p(src, planes[i]);
-            plane.component_size[0] = { avs_bits_per_component(&fi->vi) };
-            plane.component_pad[0] = 0;
-            plane.component_map[0] = 0;
 
             {
                 std::lock_guard<std::mutex> lck(mtx);
@@ -157,6 +155,10 @@ static AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
                         default: ErrorText = "libplacebo_Deband: failed creating GPU textures!";
                     }
                 }
+
+                pl_shader_obj_destroy(&d->vf->dither_state);
+                pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
+                pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
             }
         }
     }
@@ -186,7 +188,6 @@ static void AVSC_CC free_deband(AVS_FilterInfo* fi)
 {
     deband* d{ reinterpret_cast<deband*>(fi->user_data) };
 
-    pl_shader_obj_destroy(&d->vf->dither_state);
     avs_libplacebo_uninit(d->vf);
     delete d;
 }
@@ -205,7 +206,7 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
 
     deband* params{ new deband() };
 
-    AVS_Value avs_ver{ avs_version("libplacebo_Deband", env) };
+    AVS_Value avs_ver{ avs_version(params->msg, "libplacebo_Deband", env) };
     if (avs_is_error(avs_ver))
         return avs_ver;
 

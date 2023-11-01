@@ -1,6 +1,9 @@
 #include <algorithm>
 #include <cstring>
 #include <mutex>
+#include <regex>
+#include <tuple>
+#include <unordered_map>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -211,7 +214,7 @@ static int tonemap_reconfig(priv& p, const pl_plane_data* data)
 static int tonemap_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, const tonemap& d, const pl_color_repr& src_repr, const pl_color_repr& dst_repr, const int dst_stride)
 {
     // Upload planes
-    pl_plane planes[4]{};
+    pl_plane planes[3]{};
 
     for (int i{ 0 }; i < 3; ++i)
     {
@@ -233,6 +236,9 @@ static int tonemap_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, 
 
         if (!pl_tex_download(p.gpu, &ttr1))
             return -3;
+
+        pl_tex_destroy(p.gpu, &p.tex_out[i]);
+        pl_tex_destroy(p.gpu, &p.tex_in[i]);
     }
 
     return 0;
@@ -252,6 +258,12 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
     {
         avs_release_video_frame(src);
         avs_release_video_frame(dst);
+
+        for (int i{ 0 }; i < 3; ++i)
+        {
+            pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[i]);
+            pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[i]);
+        }
 
         if (dst_buf)
         {
@@ -416,11 +428,11 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
     constexpr int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
     const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
     const int dst_stride = ((avs_get_pitch(dst)) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
-    pl_plane_data pl[4]{};
-    pl_buf dst_buf[4]{};
+    pl_plane_data pl[3]{};
     pl_buf_params buf_params{};
     buf_params.size = dst_stride * fi->vi.height;
     buf_params.host_mapped = true;
+    pl_buf dst_buf[3]{ pl_buf_create(d->vf->gpu, &buf_params), pl_buf_create(d->vf->gpu, &buf_params), pl_buf_create(d->vf->gpu, &buf_params) };
 
     for (int i{ 0 }; i < 3; ++i)
     {
@@ -431,10 +443,7 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
         pl[i].row_stride = avs_get_pitch_p(src, planes[i]);
         pl[i].pixels = avs_get_read_ptr_p(src, planes[i]);
         pl[i].component_size[0] = 16;
-        pl[i].component_pad[0] = 0;
         pl[i].component_map[0] = i;
-
-        dst_buf[i] = pl_buf_create(d->vf->gpu, &buf_params);
     }
 
     {
@@ -532,8 +541,8 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 {
     enum
     {
-        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Gamut_mapping_mode, Tone_mapping_function, Tone_mapping_mode, Tone_mapping_param,
-        Tone_mapping_crosstalk, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale, Lut, Lut_type, Dst_prim, Dst_trc, Dst_sys
+        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Gamut_mapping_mode, Tone_mapping_function, Tone_constants,
+        Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale, Lut, Lut_type, Dst_prim, Dst_trc, Dst_sys
     };
 
     AVS_FilterInfo* fi;
@@ -542,7 +551,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
     tonemap* params{ new tonemap() };
     const int srcIsRGB{ avs_is_rgb(&fi->vi) };
 
-    AVS_Value avs_ver{ avs_version("libplacebo_Tonemap", env) };
+    AVS_Value avs_ver{ avs_version(params->msg, "libplacebo_Tonemap", env) };
     if (avs_is_error(avs_ver))
         return avs_ver;
 
@@ -693,38 +702,76 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->colorMapParams = std::make_unique<pl_color_map_params>(pl_color_map_default_params);
 
         // Tone mapping function
-        int function_index{ avs_defined(avs_array_elt(args, Tone_mapping_function)) ? avs_as_int(avs_array_elt(args, Tone_mapping_function)) : 0 };
+        params->colorMapParams->tone_mapping_function = pl_find_tone_map_function(avs_defined(avs_array_elt(args, Tone_mapping_function)) ? avs_as_string(avs_array_elt(args, Tone_mapping_function)) : "bt2390");
+        if (!params->colorMapParams->tone_mapping_function)
+            return set_error(clip, "libplacebo_Tonemap: wrong tone_mapping_function.", params->vf);
 
-        if (function_index >= pl_num_tone_map_functions)
-            function_index = 0;
-
-        params->colorMapParams->tone_mapping_function = pl_tone_map_functions[function_index];
-
-        params->colorMapParams->tone_mapping_param = (avs_defined(avs_array_elt(args, Tone_mapping_param))) ? avs_as_float(avs_array_elt(args, Tone_mapping_param)) : params->colorMapParams->tone_mapping_function->param_def;
-
-        if (avs_defined(avs_array_elt(args, Gamut_mapping_mode)))
+        if (avs_defined(avs_array_elt(args, Tone_constants)))
         {
-            const int gamut_mapping{ avs_as_int(avs_array_elt(args, Gamut_mapping_mode)) };
-            switch (gamut_mapping)
+            constexpr const char* const constants_list[11]{
+                "knee_adaptation",
+                "knee_minimum",
+                "knee_maximum",
+                "knee_default",
+                "knee_offset",
+                "slope_tuning",
+                "slope_offset",
+                "spline_contrast",
+                "reinhard_contrast",
+                "linear_knee",
+                "exposure"
+            };
+
+            std::unordered_map<std::string, std::tuple<float pl_tone_map_constants::*, float, float>> constants_map {
+                { constants_list[0], std::make_tuple(&pl_tone_map_constants::knee_adaptation, 0.0f, 1.0f) },
+                { constants_list[1], std::make_tuple(&pl_tone_map_constants::knee_minimum, 0.0f, 0.5f) },
+                { constants_list[2], std::make_tuple(&pl_tone_map_constants::knee_maximum, 0.5f, 1.0f) },
+                { constants_list[3], std::make_tuple(&pl_tone_map_constants::knee_default, 0.0f, 1.0f) },
+                { constants_list[4], std::make_tuple(&pl_tone_map_constants::knee_offset, 0.5f, 2.0f) },
+                { constants_list[5], std::make_tuple(&pl_tone_map_constants::slope_tuning, 0.0f, 10.0f) },
+                { constants_list[6], std::make_tuple(&pl_tone_map_constants::slope_offset, 0.0f, 1.0f) },
+                { constants_list[7], std::make_tuple(&pl_tone_map_constants::spline_contrast, 0.0f, 1.5f) },
+                { constants_list[8], std::make_tuple(&pl_tone_map_constants::reinhard_contrast, 0.0f, 1.0f) },
+                { constants_list[9], std::make_tuple(&pl_tone_map_constants::linear_knee, 0.0f, 1.0f) },
+                { constants_list[10], std::make_tuple(&pl_tone_map_constants::exposure, 0.0f, 10.0f) }
+            };
+
+            const int constants_size{ avs_array_size(avs_array_elt(args, Tone_constants)) };
+            if (constants_size > 11)
+                return set_error(clip, "libplacebo_Tonemap: tone_constants must be equal to or less than 11.", params->vf);
+
+            for (int i{ 0 }; i < constants_size; ++i)
             {
-                case 0: break;
-                case 1: params->colorMapParams->gamut_mapping = &pl_gamut_map_clip; break;
-                case 2: params->colorMapParams->gamut_mapping = &pl_gamut_map_perceptual; break;
-                case 3: params->colorMapParams->gamut_mapping = &pl_gamut_map_relative; break;
-                case 4: params->colorMapParams->gamut_mapping = &pl_gamut_map_saturation; break;
-                case 5: params->colorMapParams->gamut_mapping = &pl_gamut_map_absolute; break;
-                case 6: params->colorMapParams->gamut_mapping = &pl_gamut_map_desaturate; break;
-                case 7: params->colorMapParams->gamut_mapping = &pl_gamut_map_darken; break;
-                case 8: params->colorMapParams->gamut_mapping = &pl_gamut_map_highlight; break;
-                case 9: params->colorMapParams->gamut_mapping = &pl_gamut_map_linear; break;
-                default: return set_error(clip, "libplacebo_Tonemap: wrong gamut_mapping_mode.", params->vf);
+                std::string constants{avs_as_string(*(avs_as_array(avs_array_elt(args, Tone_constants)) + i))};
+                transform(constants.begin(), constants.end(), constants.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                std::regex reg("(\\w+)=(\\d+(?:\\.\\d+)?)");
+                std::smatch match;
+                if (!std::regex_match(constants.cbegin(), constants.cend(), match, reg))
+                    return set_error(clip, "libplacebo_Tonemap: regex failed parsing tone_constants.", params->vf);
+                if (std::find(std::begin(constants_list), std::end(constants_list), match[1].str()) == std::end(constants_list))
+                {
+                    params->msg = "libplacebo_Tonemap: wrong tone_constant " + match[1].str() + ".";
+                    return set_error(clip, params->msg.c_str(), params->vf);
+                }
+
+                const float constant_value{ std::stof(match[2].str()) };
+                if (constant_value < std::get<1>(constants_map[match[1].str()]) || constant_value > std::get<2>(constants_map[match[1].str()]))
+                {
+                    params->msg = "libplacebo_Tonemap: " + match[1].str() + " must be between " + std::to_string(std::get<1>(constants_map[match[1].str()])) +
+                        ".." + std::to_string(std::get<2>(constants_map[match[1].str()])) + ".";
+                    return set_error(clip, params->msg.c_str(), params->vf);
+                }
+
+                params->colorMapParams->tone_constants.*std::get<0>(constants_map[match[1].str()]) = constant_value;
             }
         }
-
-        if (avs_defined(avs_array_elt(args, Tone_mapping_mode)))
-            params->colorMapParams->tone_mapping_mode = static_cast<pl_tone_map_mode>(avs_as_int(avs_array_elt(args, Tone_mapping_mode)));
-        if (avs_defined(avs_array_elt(args, Tone_mapping_crosstalk)))
-            params->colorMapParams->tone_mapping_crosstalk = avs_as_float(avs_array_elt(args, Tone_mapping_crosstalk));
+        if (avs_defined(avs_array_elt(args, Gamut_mapping_mode)))
+        {
+            params->colorMapParams->gamut_mapping = pl_find_gamut_map_function(avs_as_string(avs_array_elt(args, Gamut_mapping_mode)));
+            if (!params->colorMapParams->gamut_mapping)
+                return set_error(clip, "libplacebo_Tonemap: wrong gamut_mapping_mode.", params->vf);
+        }
         if (avs_defined(avs_array_elt(args, Metadata)))
             params->colorMapParams->metadata = static_cast<pl_hdr_metadata_type>(avs_as_int(avs_array_elt(args, Metadata)));
         if (avs_defined(avs_array_elt(args, Visualize_lut)))
@@ -779,8 +826,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         params->render_params->deband_params = nullptr;
     }
 
-    const char* cscale{ (avs_defined(avs_array_elt(args, Cscale))) ? avs_as_string(avs_array_elt(args, Cscale)) : "spline36" };
-    const pl_filter_preset* cscaler{ pl_find_filter_preset(cscale) };
+    const pl_filter_config* cscaler{ pl_find_filter_config((avs_defined(avs_array_elt(args, Cscale))) ? avs_as_string(avs_array_elt(args, Cscale)) : "spline36", PL_FILTER_UPSCALING) };
     if (!cscaler)
     {
         if (lut_defined)
@@ -789,7 +835,7 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
         return set_error(clip, "libplacebo_Tonemap: not a valid cscale.", params->vf);
     }
 
-    params->render_params->plane_upscaler = cscaler->filter;
+    params->render_params->plane_upscaler = cscaler;
 
     if (srcIsRGB)
         params->is_subsampled = 0;
