@@ -185,7 +185,8 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
 - radius<br>
     It may be used to adjust the function's radius.<br>
     Defaults to the the radius needed to represent a single filter lobe (tap).<br>
-    If the function is not resizable, this doesn't have effect.
+    If the function is not resizable, this doesn't have effect.<br>
+    Must be between 0.0..16.0.
 
 - clamp<br>
     Represents a clamping coefficient for negative weights:<br>
@@ -199,12 +200,14 @@ libplacebo_Resample(clip input, int width, int height, string "filter", float "r
     Additional taper coefficient.<br>
     This essentially flattens the function's center.<br>
     The values within `[-taper, taper]` will return 1.0, with the actual function being squished into the remainder of `[taper, radius]`.<br>
+    Must be between 0.0..1.0.<br>
     Default: 0.0.
 
 - blur<br>
     Additional blur coefficient.<br>
     This effectively stretches the kernel, without changing the effective radius of the filter radius.<br>
     Values significantly below 1.0 may seriously degrade the visual output, and should be used with care.<br>
+    Must be between 0.0..100.0.<br>
     Default: 0.0.
 
 - param1, param2<br>
@@ -410,7 +413,8 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 - radius<br>
     It may be used to adjust the function's radius.<br>
     Defaults to the the radius needed to represent a single filter lobe (tap).<br>
-    If the function is not resizable, this doesn't have effect.
+    If the function is not resizable, this doesn't have effect.<br>
+    Must be between 0.0..16.0.
 
 - clamp<br>
     Represents a clamping coefficient for negative weights:<br>
@@ -424,12 +428,14 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
     Additional taper coefficient.<br>
     This essentially flattens the function's center.<br>
     The values within `[-taper, taper]` will return 1.0, with the actual function being squished into the remainder of `[taper, radius]`.<br>
+    Must be between 0.0..1.0.<br>
     Default: 0.0.
 
 - blur<br>
     Additional blur coefficient.<br>
     This effectively stretches the kernel, without changing the effective radius of the filter radius.<br>
     Values significantly below 1.0 may seriously degrade the visual output, and should be used with care.<br>
+    Must be between 0.0..100.0.<br>
     Default: 0.0.
 
 - param1, param2<br>

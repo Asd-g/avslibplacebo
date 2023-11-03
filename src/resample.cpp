@@ -10,7 +10,6 @@ struct resample
     float src_x;
     float src_y;
     std::unique_ptr<pl_sample_filter_params> sample_params;
-    std::unique_ptr<pl_filter_function> filter;
     std::unique_ptr<pl_sigmoid_params> sigmoid_params;
     pl_color_transfer trc;
     int linear;
@@ -408,6 +407,9 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     params->sample_params->no_widening = false;
     params->sample_params->no_compute = false;
     params->sample_params->antiring = (avs_defined(avs_array_elt(args, Antiring))) ? avs_as_float(avs_array_elt(args, Antiring)) : 0.0f;
+    if (params->sample_params->antiring < 0.0f || params->sample_params->antiring > 1.0f)
+        return set_error(clip, "libplacebo_Resample: antiring must be between 0.0 and 1.0.", params->vf);
+
     const pl_filter_config* filter_config{ pl_find_filter_config((avs_defined(avs_array_elt(args, Filter))) ? avs_as_string(avs_array_elt(args, Filter)) : "ewa_lanczos", PL_FILTER_UPSCALING) };
     if (!filter_config)
         return set_error(clip, "libplacebo_Resample: not a valid filter.", params->vf);
@@ -418,23 +420,24 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
         return set_error(clip, "libplacebo_Resample: clamp must be between 0.0 and 1.0.", params->vf);
 
     params->sample_params->filter.blur = (avs_defined(avs_array_elt(args, Blur))) ? avs_as_float(avs_array_elt(args, Blur)) : 0.0f;
+    if (params->sample_params->filter.blur < 0.0f || params->sample_params->filter.blur > 100.0f)
+        return set_error(clip, "libplacebo_Resample: blur must be between 0.0 and 100.0.", params->vf);
+
     params->sample_params->filter.taper = (avs_defined(avs_array_elt(args, Taper))) ? avs_as_float(avs_array_elt(args, Taper)) : 0.0f;
+    if (params->sample_params->filter.taper < 0.0f || params->sample_params->filter.taper > 1.0f)
+        return set_error(clip, "libplacebo_Resample: taper must be between 0.0 and 1.0.", params->vf);
 
-    params->filter = std::make_unique<pl_filter_function>();
-    *params->filter.get() = *params->sample_params->filter.kernel;
-
-    if (params->filter->resizable)
+    if (avs_defined(avs_array_elt(args, Radius)))
     {
-        if (avs_defined(avs_array_elt(args, Radius)))
-            params->filter->radius = avs_as_float(avs_array_elt(args, Radius));
+        params->sample_params->filter.radius = avs_as_float(avs_array_elt(args, Radius));
+        if (params->sample_params->filter.radius < 0.0f || params->sample_params->filter.radius > 16.0f)
+            return set_error(clip, "libplacebo_Resample: radius must be between 0.0 and 16.0.", params->vf);
     }
 
-    if (avs_defined(avs_array_elt(args, Param1)) && params->filter->tunable[0])
-        params->filter->params[0] = avs_as_float(avs_array_elt(args, Param1));
-    if (avs_defined(avs_array_elt(args, Param2)) && params->filter->tunable[1])
-        params->filter->params[1] = avs_as_float(avs_array_elt(args, Param2));
-
-    params->sample_params->filter.kernel = params->filter.get();
+    if (avs_defined(avs_array_elt(args, Param1)))
+        params->sample_params->filter.params[0] = avs_as_float(avs_array_elt(args, Param1));
+    if (avs_defined(avs_array_elt(args, Param2)))
+        params->sample_params->filter.params[1] = avs_as_float(avs_array_elt(args, Param2));
 
     if (avs_is_420(&fi->vi) || avs_is_422(&fi->vi))
     {

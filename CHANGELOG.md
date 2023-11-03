@@ -1,3 +1,6 @@
+#####
+    Resample/Shader:  fixed `param1` and `param2`.
+
 ##### 1.5.0:
     Fixed more error messages.
     Moved some memory freeing right after the plane is downloaded.

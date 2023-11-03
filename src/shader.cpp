@@ -18,7 +18,6 @@ struct shader
     enum pl_color_levels range;
     enum pl_chroma_location chromaLocation;
     std::unique_ptr<pl_sample_filter_params> sample_params;
-    std::unique_ptr<pl_filter_function> filter;
     std::unique_ptr<pl_sigmoid_params> sigmoid_params;
     enum pl_color_transfer trc;
     int linear;
@@ -412,7 +411,13 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     }
 
     params->sample_params = std::make_unique<pl_sample_filter_params>();
+
     params->sample_params->antiring = (avs_defined(avs_array_elt(args, Antiring))) ? avs_as_float(avs_array_elt(args, Antiring)) : 0.0f;
+    if (params->sample_params->antiring < 0.0f || params->sample_params->antiring > 1.0f)
+    {
+        pl_mpv_user_shader_destroy(&params->shader);
+        return set_error(clip, "libplacebo_Shader: antiring must be between 0.0 and 1.0.", params->vf);
+    }
 
     const pl_filter_config* filter_config{ pl_find_filter_config((avs_defined(avs_array_elt(args, Filter))) ? avs_as_string(avs_array_elt(args, Filter)) : "ewa_lanczos", PL_FILTER_UPSCALING) };
     if (!filter_config)
@@ -430,23 +435,33 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     }
 
     params->sample_params->filter.blur = (avs_defined(avs_array_elt(args, Blur))) ? avs_as_float(avs_array_elt(args, Blur)) : 0.0f;
-    params->sample_params->filter.taper = (avs_defined(avs_array_elt(args, Taper))) ? avs_as_float(avs_array_elt(args, Taper)) : 0.0f;
-
-    params->filter = std::make_unique<pl_filter_function>();
-    *params->filter.get() = *params->sample_params->filter.kernel;
-
-    if (params->filter->resizable)
+    if (params->sample_params->filter.blur < 0.0f || params->sample_params->filter.blur > 100.0f)
     {
-        if (avs_defined(avs_array_elt(args, Radius)))
-            params->filter->radius = avs_as_float(avs_array_elt(args, Radius));
+        pl_mpv_user_shader_destroy(&params->shader);
+        return set_error(clip, "libplacebo_Shader: blur must be between 0.0 and 100.0.", params->vf);
     }
 
-    if (avs_defined(avs_array_elt(args, Param1)) && params->filter->tunable[0])
-        params->filter->params[0] = avs_as_float(avs_array_elt(args, Param1));
-    if (avs_defined(avs_array_elt(args, Param2)) && params->filter->tunable[1])
-        params->filter->params[1] = avs_as_float(avs_array_elt(args, Param2));
+    params->sample_params->filter.taper = (avs_defined(avs_array_elt(args, Taper))) ? avs_as_float(avs_array_elt(args, Taper)) : 0.0f;
+    if (params->sample_params->filter.taper < 0.0f || params->sample_params->filter.taper > 1.0f)
+    {
+        pl_mpv_user_shader_destroy(&params->shader);
+        return set_error(clip, "libplacebo_Shader: taper must be between 0.0 and 1.0.", params->vf);
+    }
 
-    params->sample_params->filter.kernel = params->filter.get();
+    if (avs_defined(avs_array_elt(args, Radius)))
+    {
+        params->sample_params->filter.radius = avs_as_float(avs_array_elt(args, Radius));
+        if (params->sample_params->filter.radius < 0.0f || params->sample_params->filter.radius > 16.0f)
+        {
+            pl_mpv_user_shader_destroy(&params->shader);
+            return set_error(clip, "libplacebo_Shader: radius must be between 0.0 and 16.0.", params->vf);
+        }
+    }
+
+    if (avs_defined(avs_array_elt(args, Param1)))
+        params->sample_params->filter.params[0] = avs_as_float(avs_array_elt(args, Param1));
+    if (avs_defined(avs_array_elt(args, Param2)))
+        params->sample_params->filter.params[1] = avs_as_float(avs_array_elt(args, Param2));
 
     params->subw = avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U);
     params->subh = avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U);
