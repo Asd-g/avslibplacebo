@@ -70,8 +70,6 @@ static bool shader_do_plane(priv& p, const shader& data, const pl_plane* planes)
     renderParams.upscaler = &data.sample_params->filter;
     renderParams.downscaler = &data.sample_params->filter;
     renderParams.antiringing_strength = data.sample_params->antiring;
-    renderParams.lut_entries = data.sample_params->lut_entries;
-    renderParams.polar_cutoff = data.sample_params->cutoff;
 
     return pl_render_image(p.rr, &img, &out, &renderParams);
 }
