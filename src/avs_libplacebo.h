@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <iostream>
+#include <sstream>
 
 #include "avisynth_c.h"
 
@@ -26,6 +28,7 @@ AVS_Value set_error(AVS_Clip* clip, const char* error_message, const std::unique
 
 struct priv
 {
+    pl_log log;
     pl_vulkan vk;
     pl_gpu gpu;
     pl_dispatch dp;
@@ -34,6 +37,8 @@ struct priv
     pl_renderer rr;
     pl_tex tex_in[4];
     pl_tex tex_out[4];
+
+    std::ostringstream log_buffer;
 };
 
 AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void* param);

@@ -1,10 +1,31 @@
+#include <iostream>
+
 #include "avs_libplacebo.h"
 
 static_assert(PL_API_VER >= 338, "libplacebo version must be at least v6.338.0.");
 
+static void pl_logging(void* stream, pl_log_level level, const char* msg)
+{
+    constexpr const char* const constants_list[]
+    {
+        "[fatal] ",
+        "[error] ",
+        "[warn] ",
+        "[info] ",
+        "[debug] ",
+        "[trace] "
+    };
+
+    std::cout << constants_list[level - 1] << msg << std::endl;
+}
+
 std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device, std::string& err_msg)
 {
     std::unique_ptr<priv> p{ std::make_unique<priv>() };
+    std::cout.rdbuf(p->log_buffer.rdbuf());
+    pl_log_params log_params{ pl_logging, nullptr, PL_LOG_ERR };
+    p->log = pl_log_create(0, &log_params);
+
     pl_vulkan_params vp{};
     vp.allow_software = true;
 
@@ -15,29 +36,34 @@ std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device,
         vp.device_name = properties.deviceName;
     }
 
-    p->vk = pl_vulkan_create(nullptr, &vp);
+    p->vk = pl_vulkan_create(p->log, &vp);
     if (!p->vk)
     {
-        err_msg = "failed creating vulkan context.";
+        err_msg = p->log_buffer.str();
+        pl_log_destroy(&p->log);
         return nullptr;
     }
     // Give this a shorter name for convenience
     p->gpu = p->vk->gpu;
 
-    p->dp = pl_dispatch_create(nullptr, p->gpu);
+    p->dp = pl_dispatch_create(p->log, p->gpu);
     if (!p->dp)
     {
         pl_vulkan_destroy(&p->vk);
-        err_msg = "failed creating shader dispatch object.";
+
+        err_msg = p->log_buffer.str();
+        pl_log_destroy(&p->log);
         return nullptr;
     }
 
-    p->rr = pl_renderer_create(nullptr, p->gpu);
+    p->rr = pl_renderer_create(p->log, p->gpu);
     if (!p->rr)
     {
         pl_dispatch_destroy(&p->dp);
         pl_vulkan_destroy(&p->vk);
-        err_msg = "failed creating renderer.";
+
+        err_msg = p->log_buffer.str();
+        pl_log_destroy(&p->log);
         return nullptr;
     }
 
@@ -49,6 +75,7 @@ void avs_libplacebo_uninit(const std::unique_ptr<struct priv>& p)
     pl_renderer_destroy(&p->rr);
     pl_dispatch_destroy(&p->dp);
     pl_vulkan_destroy(&p->vk);
+    pl_log_destroy(&p->log);
 }
 
 AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, const std::string& name, const int device, const int list_device)

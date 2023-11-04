@@ -89,7 +89,7 @@ static int shader_reconfig(priv& p, const pl_plane_data* data, const shader& d, 
         t_r.host_writable = true;
 
         if (!pl_tex_recreate(p.gpu, &p.tex_in[i], &t_r))
-            return -2;
+            return -1;
 
         t_r.w = w;
         t_r.h = h;
@@ -99,7 +99,7 @@ static int shader_reconfig(priv& p, const pl_plane_data* data, const shader& d, 
         t_r.host_readable = true;
 
         if (!pl_tex_recreate(p.gpu, &p.tex_out[i], &t_r))
-            return -2;
+            return -1;
     }
 
     return 0;
@@ -118,7 +118,7 @@ static int shader_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, s
 
     // Process plane
     if (!shader_do_plane(p, d, planes))
-        return -2;
+        return -1;
 
     // Download planes
     for (int i{ 0 }; i < 3; ++i)
@@ -129,7 +129,7 @@ static int shader_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, s
         ttr1.buf = dst[i];
 
         if (!pl_tex_download(p.gpu, &ttr1))
-            return -3;
+            return -1;
 
         pl_tex_destroy(p.gpu, &p.tex_out[i]);
         pl_tex_destroy(p.gpu, &p.tex_in[i]);
@@ -184,28 +184,18 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
     {
         std::lock_guard<std::mutex> lck(mtx);
 
-        const int reconf{ shader_reconfig(*d->vf.get(), pl, *d, fi->vi.width, fi->vi.height) };
-        if (reconf == 0)
+        if (!shader_reconfig(*d->vf.get(), pl, *d, fi->vi.width, fi->vi.height))
         {
-            const int filt{ shader_filter(*d->vf.get(), dst_buf, pl, *d, dst_stride) };
-
-            if (filt)
+            if (shader_filter(*d->vf.get(), dst_buf, pl, *d, dst_stride))
             {
-                switch (filt)
-                {
-                    case -1: ErrorText = "libplacebo_Shader: failed uploading data to the GPU!"; break;
-                    case -2: ErrorText = "libplacebo_Shader: failed processing planes!"; break;
-                    default: ErrorText = "libplacebo_Shader: failed downloading data from the GPU!";
-                }
+                d->msg = "libplacebo_Shader: " + d->vf->log_buffer.str();
+                ErrorText = d->msg.c_str();
             }
         }
         else
         {
-            switch (reconf)
-            {
-                case -1: ErrorText = "libplacebo_Shader: failed configuring filter: no good texture format!"; break;
-                default: ErrorText = "libplacebo_Shader: failed creating GPU textures!";
-            }
+            d->msg = "libplacebo_Shader: " + d->vf->log_buffer.str();
+            ErrorText = d->msg.c_str();
         }
     }
 

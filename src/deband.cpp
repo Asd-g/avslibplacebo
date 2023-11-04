@@ -65,10 +65,10 @@ static int deband_reconfig(priv& p, const pl_plane_data& data, AVS_VideoFrame* d
         t_r.host_readable = true;
 
         if (!pl_tex_recreate(p.gpu, &p.tex_out[0], &t_r))
-            return -2;
+            return -1;
     }
     else
-        return -2;
+        return -1;
 
     return 0;
 }
@@ -86,7 +86,7 @@ static int deband_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& data
 
     // Process plane
     if (!deband_do_plane(p, d, planeIdx))
-        return -2;
+        return -1;
 
     ttr.tex = p.tex_out[0];
     ttr.row_pitch = avs_get_pitch_p(dst, planeIdx);
@@ -94,7 +94,7 @@ static int deband_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& data
 
     // Download planes
     if (!pl_tex_download(p.gpu, &ttr))
-        return -3;
+        return -1;
 
     return 0;
 }
@@ -133,27 +133,18 @@ static AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
             {
                 std::lock_guard<std::mutex> lck(mtx);
 
-                const int reconf{ deband_reconfig(*d->vf.get(), plane, dst, planes[i]) };
-                if (reconf == 0)
+                if (!deband_reconfig(*d->vf.get(), plane, dst, planes[i]))
                 {
-                    const int filt{ deband_filter(*d->vf.get(), dst, plane, *d, planes[i]) };
-                    if (filt < 0)
+                    if (deband_filter(*d->vf.get(), dst, plane, *d, planes[i]))
                     {
-                        switch (filt)
-                        {
-                            case -1: ErrorText = "libplacebo_Deband: failed uploading data to the GPU!"; break;
-                            case -2: ErrorText = "libplacebo_Deband: failed processing planes!"; break;
-                            default: ErrorText = "libplacebo_Deband: failed downloading data from the GPU!";
-                        }
+                        d->msg = "libplacebo_Deband: " + d->vf->log_buffer.str();
+                        ErrorText = d->msg.c_str();
                     }
                 }
                 else
                 {
-                    switch (reconf)
-                    {
-                        case -1: ErrorText = "libplacebo_Deband: failed configuring filter: no good texture format!"; break;
-                        default: ErrorText = "libplacebo_Deband: failed creating GPU textures!";
-                    }
+                    d->msg = "libplacebo_Deband: " + d->vf->log_buffer.str();
+                    ErrorText = d->msg.c_str();
                 }
 
                 pl_shader_obj_destroy(&d->vf->dither_state);

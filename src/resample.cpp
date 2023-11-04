@@ -51,7 +51,7 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
     tp.format = src.tex->params.format;
 
     if (!pl_tex_recreate(p.gpu, &sample_fbo, &tp))
-        return 1;
+        return -1;
 
     pl_shader_sample_direct(ish, &src);
 
@@ -66,7 +66,7 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
     dp.shader = &ish;
 
     if (!pl_dispatch_finish(p.dp, &dp))
-        return 2;
+        return -1;
 
     //
     // sampling
@@ -98,7 +98,7 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
     if (data.sample_params->filter.polar)
     {
         if (!pl_shader_sample_polar(sh, &src, &sample_params))
-            return 3;
+            return -1;
     }
     else
     {
@@ -114,26 +114,26 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
         if (!pl_shader_sample_ortho2(tsh, &src, &sample_params))
         {
             pl_dispatch_abort(p.dp, &tsh);
-            return 4;
+            return -1;
         }
 
         tp.w = src.new_w;
         tp.h = src.new_h;
 
         if (!pl_tex_recreate(p.gpu, &sep_fbo, &tp))
-            return 5;
+            return -1;
 
         dp.target = sep_fbo;
         dp.shader = &tsh;
 
         if (!pl_dispatch_finish(p.dp, &dp))
-            return 6;
+            return -1;
 
         src1.tex = sep_fbo;
         src1.scale = 1.0f;
 
         if (!pl_shader_sample_ortho2(sh, &src1, &sample_params))
-            return 7;
+            return -1;
     }
 
     if (data.sigmoid_params.get())
@@ -146,7 +146,7 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
     dp.shader = &sh;
 
     if (!pl_dispatch_finish(p.dp, &dp))
-        return 8;
+        return -1;
 
     pl_tex_destroy(p.gpu, &sep_fbo);
     pl_tex_destroy(p.gpu, &sample_fbo);
@@ -178,10 +178,10 @@ static int resample_reconfig(priv& p, const pl_plane_data& data, const int w, co
         t_r.storable = true;
 
         if (!pl_tex_recreate(p.gpu, &p.tex_out[0], &t_r))
-            return -2;
+            return -1;
     }
     else
-        return -2;
+        return -1;
 
     return 0;
 }
@@ -198,9 +198,8 @@ static int resample_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& sr
         return -1;
 
     // Process plane
-    const int proc{ resample_do_plane(p, d, lut, w, h, sx, sy, planeIdx) };
-    if (proc)
-        return proc;
+    if (resample_do_plane(p, d, lut, w, h, sx, sy, planeIdx))
+        return -1;
 
     ttr.tex = p.tex_out[0];
     ttr.row_pitch = avs_get_pitch_p(dst, planeIdx);
@@ -208,7 +207,7 @@ static int resample_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& sr
 
     // Download planes
     if (!pl_tex_download(p.gpu, &ttr))
-        return -3;
+        return -1;
 
     return 0;
 }
@@ -247,38 +246,22 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
             std::lock_guard<std::mutex> lck(mtx);
 
             pl_shader_obj lut{};
-            const int reconf{ resample_reconfig(*d->vf.get(), plane, dst_width, dst_height) };
-            if (reconf == 0)
+
+            if (!resample_reconfig(*d->vf.get(), plane, dst_width, dst_height))
             {
-                const int filt{ resample_filter(*d->vf.get(), dst, plane, *d, lut, dst_width, dst_height,
+                if (resample_filter(*d->vf.get(), dst, plane, *d, lut, dst_width, dst_height,
                     (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
                     (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y,
-                    planes[i]) };
-
-                if (filt)
+                    planes[i]))
                 {
-                    switch (filt)
-                    {
-                        case -1: ErrorText = "libplacebo_Resample: failed uploading data to the GPU!"; break;
-                        case 1: ErrorText = "libplacebo_Resample: failed creating intermediate color texture!"; break;
-                        case 2: ErrorText = "libplacebo_Resample: failed linearizing/sigmoidizing!"; break;
-                        case 3: ErrorText = "libplacebo_Resample: failed dispatching scaler..."; break;
-                        case 4: ErrorText = "libplacebo_Resample: failed dispatching vertical pass!"; break;
-                        case 5: ErrorText = "libplacebo_Resample: failed creating intermediate texture!"; break;
-                        case 6: ErrorText = "libplacebo_Resample: failed rendering vertical pass!"; break;
-                        case 7: ErrorText = "libplacebo_Resample: failed dispatching horizontal pass!"; break;
-                        case 8: ErrorText = "libplacebo_Resample: failed rendering horizontal pass!"; break;
-                        default: ErrorText = "libplacebo_Resample: failed downloading data from the GPU!";
-                    }
+                    d->msg = "libplacebo_Resample: " + d->vf->log_buffer.str();
+                    ErrorText = d->msg.c_str();
                 }
             }
             else
             {
-                switch (reconf)
-                {
-                    case -1: ErrorText = "libplacebo_Resample: failed configuring filter: no good texture format!"; break;
-                    default: ErrorText = "libplacebo_Resample: failed creating GPU textures!";
-                }
+                d->msg = "libplacebo_Resample: " + d->vf->log_buffer.str();
+                ErrorText = d->msg.c_str();
             }
 
             pl_shader_obj_destroy(&lut);

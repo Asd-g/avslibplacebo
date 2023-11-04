@@ -188,7 +188,7 @@ static int tonemap_reconfig(priv& p, const pl_plane_data* data)
         t_r.host_writable = true;
 
         if (!pl_tex_recreate(p.gpu, &p.tex_in[i], &t_r))
-            return -2;
+            return -1;
 
         pl_plane_data data1{ data[i] };
         data1.width = data[0].width;
@@ -205,7 +205,7 @@ static int tonemap_reconfig(priv& p, const pl_plane_data* data)
         t_r.host_readable = true;
 
         if (!pl_tex_recreate(p.gpu, &p.tex_out[i], &t_r))
-            return -2;
+            return -1;
     }
 
     return 0;
@@ -224,7 +224,7 @@ static int tonemap_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, 
 
     // Process plane
     if (!tonemap_do_plane(p, d, planes, src_repr, dst_repr))
-        return -2;
+        return -1;
 
     // Download planes
     for (int i{ 0 }; i < 3; ++i)
@@ -235,7 +235,7 @@ static int tonemap_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, 
         ttr1.buf = dst[i];
 
         if (!pl_tex_download(p.gpu, &ttr1))
-            return -3;
+            return -1;
 
         pl_tex_destroy(p.gpu, &p.tex_out[i]);
         pl_tex_destroy(p.gpu, &p.tex_in[i]);
@@ -449,29 +449,13 @@ static AVS_VideoFrame* AVSC_CC tonemap_get_frame(AVS_FilterInfo* fi, int n)
     {
         std::lock_guard<std::mutex> lck(mtx);
 
-        const int reconf{ tonemap_reconfig(*d->vf.get(), pl) };
-        if (reconf == 0)
+        if (!tonemap_reconfig(*d->vf.get(), pl))
         {
-            const int filt{ tonemap_filter(*d->vf.get(), dst_buf, pl, *d, *d->src_repr.get(), *d->dst_repr.get(), dst_stride) };
-
-            if (filt)
-            {
-                switch (filt)
-                {
-                    case -1: return error("libplacebo_Tonemap: failed uploading data to the GPU!", dst_buf);
-                    case -2: return error("libplacebo_Tonemap: failed processing planes!", dst_buf);
-                    default: return error("libplacebo_Tonemap: failed downloading data from the GPU!", dst_buf);
-                }
-            }
+            if (tonemap_filter(*d->vf.get(), dst_buf, pl, *d, *d->src_repr.get(), *d->dst_repr.get(), dst_stride))
+                return error("libplacebo_Tonemap: " + d->vf->log_buffer.str(), dst_buf);
         }
         else
-        {
-            switch (reconf)
-            {
-                case -1: return error("libplacebo_Tonemap: failed configuring filter: no good texture format!", dst_buf);
-                default: return error("libplacebo_Tonemap: failed creating GPU textures!", dst_buf);
-            }
-        }
+            return error("libplacebo_Tonemap: " + d->vf->log_buffer.str(), dst_buf);
     }
 
     for (int i{ 0 }; i < 3; ++i)
@@ -708,7 +692,8 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 
         if (avs_defined(avs_array_elt(args, Tone_constants)))
         {
-            constexpr const char* const constants_list[11]{
+            constexpr const char* const constants_list[11]
+            {
                 "knee_adaptation",
                 "knee_minimum",
                 "knee_maximum",
