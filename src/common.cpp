@@ -16,13 +16,17 @@ static void pl_logging(void* stream, pl_log_level level, const char* msg)
         "[trace] "
     };
 
-    std::cout << constants_list[level - 1] << msg << std::endl;
+    if (level <= PL_LOG_WARN)
+        std::cerr << constants_list[level - 1] << msg << "\n";
+    else
+        std::cout << constants_list[level - 1] << msg << "\n";
 }
 
 std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device, std::string& err_msg)
 {
     std::unique_ptr<priv> p{ std::make_unique<priv>() };
-    std::cout.rdbuf(p->log_buffer.rdbuf());
+    //std::cout.rdbuf(p->log_buffer.rdbuf());
+    std::cerr.rdbuf(p->log_buffer.rdbuf());
     pl_log_params log_params{ pl_logging, nullptr, PL_LOG_ERR };
     p->log = pl_log_create(0, &log_params);
 
