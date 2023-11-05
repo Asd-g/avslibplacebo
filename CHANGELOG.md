@@ -1,5 +1,6 @@
-#####
+##### 1.5.1:
     Resample/Shader:  fixed `param1` and `param2`.
+    libplacebo error messages are propagated.
 
 ##### 1.5.0:
     Fixed more error messages.
