@@ -299,9 +299,16 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
 #ifdef _WIN32
     const int required_size{ MultiByteToWideChar(CP_UTF8, 0, shader_path, -1, nullptr, 0) };
-    std::unique_ptr<wchar_t[]> wbuffer{ std::make_unique<wchar_t[]>(required_size) };
-    MultiByteToWideChar(CP_UTF8, 0, shader_path, -1, wbuffer.get(), required_size);
-    shader_file = _wfopen(wbuffer.get(), L"rb");
+    std::wstring wbuffer(required_size, 0);
+    MultiByteToWideChar(CP_UTF8, 0, shader_path, -1, wbuffer.data(), required_size);
+    shader_file = _wfopen(wbuffer.c_str(), L"rb");
+    if (!shader_file)
+    {
+        const int req_size{ MultiByteToWideChar(CP_ACP, 0, shader_path, -1, nullptr, 0) };
+        wbuffer.resize(req_size);
+        MultiByteToWideChar(CP_ACP, 0, shader_path, -1, wbuffer.data(), req_size);
+        shader_file = _wfopen(wbuffer.c_str(), L"rb");
+    }
 #else
     shader_file = std::fopen(shader_path, "rb");
 #endif
