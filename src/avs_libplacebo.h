@@ -34,8 +34,8 @@ struct priv
     pl_shader_obj dither_state;
 
     pl_renderer rr;
-    pl_tex tex_in[4];
-    pl_tex tex_out[4];
+    pl_tex tex_in[3];
+    pl_tex tex_out[3];
 
     std::ostringstream log_buffer;
 };

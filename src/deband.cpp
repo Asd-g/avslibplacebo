@@ -14,87 +14,148 @@ struct deband
     std::unique_ptr<pl_deband_params> deband_params1;
     uint8_t frame_index;
     std::string msg;
+
+    int (*deband_process)(AVS_VideoFrame* dst, AVS_VideoFrame* src, deband* d, const AVS_FilterInfo* vi) noexcept;
 };
 
-static bool deband_do_plane(priv& p, deband& data, const int planeIdx) noexcept
+static bool deband_do_plane(deband* d, const int planeIdx) noexcept
 {
-    pl_shader sh{ pl_dispatch_begin(p.dp) };
+    pl_shader sh{ pl_dispatch_begin(d->vf->dp) };
 
     pl_shader_params sh_p{};
-    sh_p.gpu = p.gpu;
-    sh_p.index = data.frame_index++;
+    sh_p.gpu = d->vf->gpu;
+    sh_p.index = d->frame_index++;
 
     pl_shader_reset(sh, &sh_p);
 
     pl_sample_src src{};
-    src.tex = p.tex_in[0];
+    src.tex = d->vf->tex_in[0];
 
     pl_shader_deband(sh, &src, ((planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) &&
-        data.deband_params1) ? data.deband_params1.get() : data.deband_params.get());
+        d->deband_params1) ? d->deband_params1.get() : d->deband_params.get());
 
-    if (data.dither)
-        pl_shader_dither(sh, p.tex_out[0]->params.format->component_depth[0], &p.dither_state, data.dither_params.get());
+    if (d->dither)
+        pl_shader_dither(sh, d->vf->tex_out[0]->params.format->component_depth[0], &d->vf->dither_state, d->dither_params.get());
 
     pl_dispatch_params d_p{};
-    d_p.target = p.tex_out[0];
+    d_p.target = d->vf->tex_out[0];
     d_p.shader = &sh;
 
-    return pl_dispatch_finish(p.dp, &d_p);
+    return pl_dispatch_finish(d->vf->dp, &d_p);
 }
 
-static int deband_reconfig(priv& p, const pl_plane_data& data, AVS_VideoFrame* dst, const int planeIdx)
+template<typename T>
+static int deband_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, deband* d, const AVS_FilterInfo* fi) noexcept
 {
-    pl_fmt fmt{ pl_plane_find_fmt(p.gpu, nullptr, &data) };
-    if (!fmt)
-        return -1;
-
-    pl_tex_params t_r{};
-    t_r.w = data.width;
-    t_r.h = data.height;
-    t_r.format = fmt;
-    t_r.sampleable = true;
-    t_r.host_writable = true;
-
-    if (pl_tex_recreate(p.gpu, &p.tex_in[0], &t_r))
+    const int error{ [&]()
     {
-        t_r.w = avs_get_row_size_p(dst, planeIdx) / data.pixel_stride;
-        t_r.h = avs_get_height_p(dst, planeIdx);
-        t_r.sampleable = false;
-        t_r.host_writable = false;
-        t_r.renderable = true;
-        t_r.host_readable = true;
+        pl_shader_obj_destroy(&d->vf->dither_state);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
 
-        if (!pl_tex_recreate(p.gpu, &p.tex_out[0], &t_r))
-            return -1;
+        return -1;
+    }() };
+
+    const pl_fmt fmt{ [&]()
+    {
+        if constexpr (std::is_same_v<T, uint8_t>)
+            return pl_find_named_fmt(d->vf->gpu, "r8");
+        else if constexpr (std::is_same_v<T, uint16_t>)
+            return pl_find_named_fmt(d->vf->gpu, "r16");
+        else
+            return pl_find_named_fmt(d->vf->gpu, "r32f");
+    }() };
+    if (!fmt)
+        return error;
+
+    constexpr int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
+    constexpr int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
+    const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
+    const int num_planes{ std::min(avs_num_components(&fi->vi), 3) };
+
+    for (int i{ 0 }; i < num_planes; ++i)
+    {
+        const int plane{ planes[i] };
+
+        if (d->process[i] == 2)
+            avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, plane), avs_get_pitch_p(dst, plane), avs_get_read_ptr_p(src, plane),
+                avs_get_pitch_p(src, plane), avs_get_row_size_p(src, plane), avs_get_height_p(src, plane));
+        else if (d->process[i] == 3)
+        {
+            pl_plane_data pl{};
+            pl.pixel_stride = sizeof(T);
+            if constexpr (std::is_same_v<T, uint8_t>)
+            {
+                pl.type = PL_FMT_UNORM;
+                pl.component_size[0] = 8;
+            }
+            else if constexpr (std::is_same_v<T, uint16_t>)
+            {
+                pl.type = PL_FMT_UNORM;
+                pl.component_size[0] = 16;
+            }
+            else
+            {
+                pl.type = PL_FMT_FLOAT;
+                pl.component_size[0] = 32;
+            }
+            pl.width = avs_get_row_size_p(src, plane) / sizeof(T);
+            pl.height = avs_get_height_p(src, plane);
+            pl.row_stride = avs_get_pitch_p(src, plane);
+            pl.pixels = avs_get_read_ptr_p(src, plane);
+
+            std::lock_guard<std::mutex> lck(mtx);
+
+            // Upload planes
+            if (!pl_upload_plane(d->vf->gpu, nullptr, &d->vf->tex_in[0], &pl))
+                return error;
+
+            pl_tex_params t_r{};
+            t_r.format = fmt;
+            t_r.w = pl.width;
+            t_r.h = pl.height;
+            t_r.sampleable = false;
+            t_r.host_writable = false;
+            t_r.renderable = true;
+            t_r.host_readable = true;
+
+            if (!pl_tex_recreate(d->vf->gpu, &d->vf->tex_out[0], &t_r))
+                return error;
+
+            // Process plane
+            if (!deband_do_plane(d, plane))
+                return error;
+
+            const size_t dst_stride{ (avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1) };
+            pl_buf_params buf_params{};
+            buf_params.size = dst_stride * t_r.h;
+            buf_params.host_mapped = true;
+
+            pl_buf dst_buf{};
+            if (!pl_buf_recreate(d->vf->gpu, &dst_buf, &buf_params))
+                return error;
+
+            pl_tex_transfer_params ttr{};
+            ttr.tex = d->vf->tex_out[0];
+            ttr.row_pitch = dst_stride;
+            ttr.buf = dst_buf;
+
+            // Download planes
+            if (!pl_tex_download(d->vf->gpu, &ttr))
+            {
+                pl_buf_destroy(d->vf->gpu, &dst_buf);
+                return error;
+            }
+
+            pl_shader_obj_destroy(&d->vf->dither_state);
+            pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
+            pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
+
+            while (pl_buf_poll(d->vf->gpu, dst_buf, 0));
+            memcpy(avs_get_write_ptr_p(dst, plane), dst_buf->data, dst_buf->params.size);
+            pl_buf_destroy(d->vf->gpu, &dst_buf);
+        }
     }
-    else
-        return -1;
-
-    return 0;
-}
-
-static int deband_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& data, deband& d, const int planeIdx)
-{
-    // Upload planes
-    pl_tex_transfer_params ttr{};
-    ttr.tex = p.tex_in[0];
-    ttr.row_pitch = data.row_stride;
-    ttr.ptr = const_cast<void*>(data.pixels);
-
-    if (!pl_tex_upload(p.gpu, &ttr))
-        return -1;
-
-    // Process plane
-    if (!deband_do_plane(p, d, planeIdx))
-        return -1;
-
-    ttr.tex = p.tex_out[0];
-    ttr.row_pitch = avs_get_pitch_p(dst, planeIdx);
-    ttr.ptr = reinterpret_cast<void*>(avs_get_write_ptr_p(dst, planeIdx));
-
-    // Download planes
-    if (!pl_tex_download(p.gpu, &ttr))
-        return -1;
 
     return 0;
 }
@@ -103,63 +164,19 @@ static AVS_VideoFrame* AVSC_CC deband_get_frame(AVS_FilterInfo* fi, int n)
 {
     deband* d{ reinterpret_cast<deband*>(fi->user_data) };
 
-    const char* ErrorText{ 0 };
     AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
     if (!src)
         return nullptr;
 
     AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
 
-    constexpr int planes_y[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
-    constexpr int planes_r[3]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B };
-    const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
-    const int num_planes{ std::min(avs_num_components(&fi->vi), 3) };
-    pl_plane_data plane{};
-    plane.type = (avs_component_size(&fi->vi) < 4) ? PL_FMT_UNORM : PL_FMT_FLOAT;
-    plane.component_size[0] = avs_bits_per_component(&fi->vi);
-
-    for (int i{ 0 }; i < num_planes && !ErrorText; ++i)
+    if (d->deband_process(dst, src, d, fi))
     {
-        if (d->process[i] == 2)
-            avs_bit_blt(fi->env, avs_get_write_ptr_p(dst, planes[i]), avs_get_pitch_p(dst, planes[i]), avs_get_read_ptr_p(src, planes[i]), avs_get_pitch_p(src, planes[i]), avs_get_row_size_p(src, planes[i]), avs_get_height_p(src, planes[i]));
-        else if (d->process[i] == 3)
-        {
-            plane.width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
-            plane.height = avs_get_height_p(src, planes[i]);
-            plane.pixel_stride = avs_component_size(&fi->vi);
-            plane.row_stride = avs_get_pitch_p(src, planes[i]);
-            plane.pixels = avs_get_read_ptr_p(src, planes[i]);
-
-            {
-                std::lock_guard<std::mutex> lck(mtx);
-
-                if (!deband_reconfig(*d->vf.get(), plane, dst, planes[i]))
-                {
-                    if (deband_filter(*d->vf.get(), dst, plane, *d, planes[i]))
-                    {
-                        d->msg = "libplacebo_Deband: " + d->vf->log_buffer.str();
-                        ErrorText = d->msg.c_str();
-                    }
-                }
-                else
-                {
-                    d->msg = "libplacebo_Deband: " + d->vf->log_buffer.str();
-                    ErrorText = d->msg.c_str();
-                }
-
-                pl_shader_obj_destroy(&d->vf->dither_state);
-                pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
-                pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
-            }
-        }
-    }
-
-    if (ErrorText)
-    {
+        d->msg = "libplacebo_Deband: " + d->vf->log_buffer.str();
         avs_release_video_frame(src);
         avs_release_video_frame(dst);
 
-        fi->error = ErrorText;
+        fi->error = d->msg.c_str();
 
         return nullptr;
     }
@@ -201,9 +218,11 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (avs_is_error(avs_ver))
         return avs_ver;
 
+    const int bits{ avs_bits_per_component(&fi->vi) };
+
     if (!avs_is_planar(&fi->vi))
         return set_error(clip, "libplacebo_Deband: clip must be in planar format.", nullptr);
-    if (avs_bits_per_component(&fi->vi) != 8 && avs_bits_per_component(&fi->vi) != 16 && avs_bits_per_component(&fi->vi) != 32)
+    if (bits != 8 && bits != 16 && bits != 32)
         return set_error(clip, "libplacebo_Deband: bit depth must be 8, 16 or 32-bit.", nullptr);
 
     const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
@@ -236,7 +255,7 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
         return set_error(clip, params->msg.c_str(), nullptr);
     }
 
-    if (avs_bits_per_component(&fi->vi) == 8)
+    if (bits == 8)
     {
         params->dither = avs_defined(avs_array_elt(args, Dither)) ? avs_as_bool(avs_array_elt(args, Dither)) : 1;
 
@@ -326,6 +345,13 @@ AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void
     }
 
     params->frame_index = 0;
+
+    switch (bits)
+    {
+        case 8: params->deband_process = deband_filter<uint8_t>; break;
+        case 16: params->deband_process = deband_filter<uint16_t>; break;
+        default: params->deband_process = deband_filter<float>; break;
+    }
 
     AVS_Value v{ avs_new_value_clip(clip) };
 

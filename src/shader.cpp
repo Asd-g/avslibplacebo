@@ -26,17 +26,17 @@ struct shader
     std::string msg;
 };
 
-static bool shader_do_plane(priv& p, const shader& data, const pl_plane* planes) noexcept
+static bool shader_do_plane(const shader* d, const pl_plane* planes) noexcept
 {
     pl_color_repr crpr{};
     crpr.bits.bit_shift = 0;
     crpr.bits.color_depth = 16;
     crpr.bits.sample_depth = 16;
-    crpr.sys = data.matrix;
-    crpr.levels = data.range;
+    crpr.sys = d->matrix;
+    crpr.levels = d->range;
 
     pl_color_space csp{};
-    csp.transfer = data.trc;
+    csp.transfer = d->trc;
 
     pl_frame img{};
     img.num_planes = 3;
@@ -46,8 +46,8 @@ static bool shader_do_plane(priv& p, const shader& data, const pl_plane* planes)
     img.planes[2] = planes[2];
     img.color = csp;
 
-    if (data.subw || data.subh)
-        pl_frame_set_chroma_location(&img, data.chromaLocation);
+    if (d->subw || d->subh)
+        pl_frame_set_chroma_location(&img, d->chromaLocation);
 
     pl_frame out{};
     out.num_planes = 3;
@@ -56,84 +56,107 @@ static bool shader_do_plane(priv& p, const shader& data, const pl_plane* planes)
 
     for (int i{ 0 }; i < 3; ++i)
     {
-        out.planes[i].texture = p.tex_out[i];
+        out.planes[i].texture = d->vf->tex_out[i];
         out.planes[i].components = 1;
         out.planes[i].component_mapping[0] = i;
     }
 
     pl_render_params renderParams{};
-    renderParams.hooks = &data.shader;
+    renderParams.hooks = &d->shader;
     renderParams.num_hooks = 1;
-    renderParams.sigmoid_params = data.sigmoid_params.get();
-    renderParams.disable_linear_scaling = !data.linear;
-    renderParams.upscaler = &data.sample_params->filter;
-    renderParams.downscaler = &data.sample_params->filter;
-    renderParams.antiringing_strength = data.sample_params->antiring;
+    renderParams.sigmoid_params = d->sigmoid_params.get();
+    renderParams.disable_linear_scaling = !d->linear;
+    renderParams.upscaler = &d->sample_params->filter;
+    renderParams.downscaler = &d->sample_params->filter;
+    renderParams.antiringing_strength = d->sample_params->antiring;
 
-    return pl_render_image(p.rr, &img, &out, &renderParams);
+    return pl_render_image(d->vf->rr, &img, &out, &renderParams);
 }
 
-static int shader_reconfig(priv& p, const pl_plane_data* data, const shader& d, const int w, const int h)
+static int shader_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, shader* d, const AVS_FilterInfo* fi) noexcept
 {
-    for (int i{ 0 }; i < 3; ++i)
+    const int error{ [&]()
     {
-        pl_fmt fmt{ pl_plane_find_fmt(p.gpu, nullptr, &data[i]) };
-        if (!fmt)
-            return -1;
+        for (int i{ 0 }; i < 3; ++i)
+        {
+            pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[i]);
+            pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[i]);
+        }
 
-        pl_tex_params t_r{};
-        t_r.w = data[i].width;
-        t_r.h = data[i].height;
-        t_r.format = fmt;
-        t_r.sampleable = true;
-        t_r.host_writable = true;
+        return -1;
+    }() };
 
-        if (!pl_tex_recreate(p.gpu, &p.tex_in[i], &t_r))
-            return -1;
+    const pl_fmt fmt{ pl_find_named_fmt(d->vf->gpu, "r16") };
+    if (!fmt)
+        return error;
 
-        t_r.w = w;
-        t_r.h = h;
-        t_r.sampleable = false;
-        t_r.host_writable = false;
-        t_r.renderable = true;
-        t_r.host_readable = true;
+    pl_tex_params t_r{};
+    t_r.w = fi->vi.width;
+    t_r.h = fi->vi.height;
+    t_r.format = fmt;
+    t_r.renderable = true;
+    t_r.host_readable = true;
 
-        if (!pl_tex_recreate(p.gpu, &p.tex_out[i], &t_r))
-            return -1;
-    }
-
-    return 0;
-}
-
-static int shader_filter(priv& p, const pl_buf* dst, const pl_plane_data* src, shader& d, const int dst_stride)
-{
-    // Upload planes
-    pl_plane planes[3]{};
+    pl_plane pl_planes[3]{};
+    constexpr int planes[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
 
     for (int i{ 0 }; i < 3; ++i)
     {
-        if (!pl_upload_plane(p.gpu, &planes[i], &p.tex_in[i], &src[i]))
-            return -1;
+        const int plane{ planes[i] };
+
+        pl_plane_data pl{};
+        pl.type = PL_FMT_UNORM;
+        pl.pixel_stride = 2;
+        pl.component_size[0] = 16;
+        pl.width = avs_get_row_size_p(src, plane) / avs_component_size(&fi->vi);
+        pl.height = avs_get_height_p(src, plane);
+        pl.row_stride = avs_get_pitch_p(src, plane);
+        pl.pixels = avs_get_read_ptr_p(src, plane);
+        pl.component_map[0] = i;
+
+        // Upload planes
+        if (!pl_upload_plane(d->vf->gpu, &pl_planes[i], &d->vf->tex_in[i], &pl))
+            return error;
+
+        if (!pl_tex_recreate(d->vf->gpu, &d->vf->tex_out[i], &t_r))
+            return error;
     }
 
     // Process plane
-    if (!shader_do_plane(p, d, planes))
-        return -1;
+    if (!shader_do_plane(d, pl_planes))
+        return error;
+
+    const int dst_stride = (avs_get_pitch(dst) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
+    pl_buf_params buf_params{};
+    buf_params.size = dst_stride * fi->vi.height;
+    buf_params.host_mapped = true;
+
+    pl_buf dst_buf{};
+    if (!pl_buf_recreate(d->vf->gpu, &dst_buf, &buf_params))
+        return error;
 
     // Download planes
     for (int i{ 0 }; i < 3; ++i)
     {
         pl_tex_transfer_params ttr1{};
-        ttr1.tex = p.tex_out[i];
         ttr1.row_pitch = dst_stride;
-        ttr1.buf = dst[i];
+        ttr1.buf = dst_buf;
+        ttr1.tex = d->vf->tex_out[i];
 
-        if (!pl_tex_download(p.gpu, &ttr1))
-            return -1;
+        if (!pl_tex_download(d->vf->gpu, &ttr1))
+        {
+            pl_buf_destroy(d->vf->gpu, &dst_buf);
+            return error;
+        }
 
-        pl_tex_destroy(p.gpu, &p.tex_out[i]);
-        pl_tex_destroy(p.gpu, &p.tex_in[i]);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[i]);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[i]);
+
+        while (pl_buf_poll(d->vf->gpu, dst_buf, 0));
+        memcpy(avs_get_write_ptr_p(dst, planes[i]), dst_buf->data, dst_buf->params.size);
     }
+
+    pl_buf_destroy(d->vf->gpu, &dst_buf);
 
     return 0;
 }
@@ -142,7 +165,6 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
 {
     shader* d{ reinterpret_cast<shader*>(fi->user_data) };
 
-    const char* ErrorText{ 0 };
     AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
     if (!src)
         return nullptr;
@@ -161,69 +183,18 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
             d->range = (r) ? PL_COLOR_LEVELS_LIMITED : PL_COLOR_LEVELS_FULL;
     }
 
-    constexpr int planes[3]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V };
-    const int dst_stride = ((avs_get_pitch(dst)) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
-    pl_plane_data pl[3]{};
-    pl_buf_params buf_params{};
-    buf_params.size = dst_stride * fi->vi.height;
-    buf_params.host_mapped = true;
-    pl_buf dst_buf[3]{ pl_buf_create(d->vf->gpu, &buf_params), pl_buf_create(d->vf->gpu, &buf_params), pl_buf_create(d->vf->gpu, &buf_params) };
-
-    for (int i{ 0 }; i < 3 && !ErrorText; ++i)
+    if (std::lock_guard<std::mutex> lck(mtx); shader_filter(dst, src, d, fi))
     {
-        pl[i].type = PL_FMT_UNORM;
-        pl[i].width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
-        pl[i].height = avs_get_height_p(src, planes[i]);
-        pl[i].pixel_stride = 2;
-        pl[i].row_stride = avs_get_pitch_p(src, planes[i]);
-        pl[i].pixels = avs_get_read_ptr_p(src, planes[i]);
-        pl[i].component_size[0] = 16;
-        pl[i].component_map[0] = i;
-    }
-
-    {
-        std::lock_guard<std::mutex> lck(mtx);
-
-        if (!shader_reconfig(*d->vf.get(), pl, *d, fi->vi.width, fi->vi.height))
-        {
-            if (shader_filter(*d->vf.get(), dst_buf, pl, *d, dst_stride))
-            {
-                d->msg = "libplacebo_Shader: " + d->vf->log_buffer.str();
-                ErrorText = d->msg.c_str();
-            }
-        }
-        else
-        {
-            d->msg = "libplacebo_Shader: " + d->vf->log_buffer.str();
-            ErrorText = d->msg.c_str();
-        }
-    }
-
-    if (ErrorText)
-    {
+        d->msg = "libplacebo_Shader: " + d->vf->log_buffer.str();
         avs_release_video_frame(src);
         avs_release_video_frame(dst);
 
-        for (int i{ 0 }; i < 3; ++i)
-        {
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[i]);
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[i]);
-            pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
-        }
-
-        fi->error = ErrorText;
+        fi->error = d->msg.c_str();
 
         return nullptr;
     }
     else
     {
-        for (int i{ 0 }; i < 3; ++i)
-        {
-            while (pl_buf_poll(d->vf->gpu, dst_buf[i], 0));
-            memcpy(avs_get_write_ptr_p(dst, planes[i]), dst_buf[i]->data, dst_buf[i]->params.size);
-            pl_buf_destroy(d->vf->gpu, &dst_buf[i]);
-        }
-
         avs_release_video_frame(src);
 
         return dst;
@@ -475,4 +446,4 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     avs_release_clip(clip);
 
     return v;
-}
+    }

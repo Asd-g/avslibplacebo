@@ -21,28 +21,30 @@ struct resample
     int cplace;
     float src_width;
     float src_height;
+
+    int (*resample_process)(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d, const AVS_FilterInfo* fi) noexcept;
 };
 
-static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const int w, const int h, const float sx, const float sy, const int planeIdx)
+static int resample_do_plane(const resample* d, pl_shader_obj* lut, const int w, const int h, const float sx, const float sy, const int planeIdx) noexcept
 {
-    pl_shader sh{ pl_dispatch_begin(p.dp) };
+    pl_shader sh{ pl_dispatch_begin(d->vf->dp) };
     pl_tex sample_fbo{};
     pl_tex sep_fbo{};
 
-    pl_sample_filter_params sample_params{ *data.sample_params.get() };
-    sample_params.lut = &lut;
+    pl_sample_filter_params* sample_params{ d->sample_params.get() };
+    sample_params->lut = lut;
 
     pl_color_space cs{};
-    cs.transfer = data.trc;
+    cs.transfer = d->trc;
 
     pl_sample_src src{};
-    src.tex = p.tex_in[0];
+    src.tex = d->vf->tex_in[0];
 
     //
     // linearization and sigmoidization
     //
 
-    pl_shader ish{ pl_dispatch_begin(p.dp) };
+    pl_shader ish{ pl_dispatch_begin(d->vf->dp) };
     pl_tex_params tp{};
     tp.w = src.tex->params.w;
     tp.h = src.tex->params.h;
@@ -50,22 +52,22 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
     tp.sampleable = true;
     tp.format = src.tex->params.format;
 
-    if (!pl_tex_recreate(p.gpu, &sample_fbo, &tp))
+    if (!pl_tex_recreate(d->vf->gpu, &sample_fbo, &tp))
         return -1;
 
     pl_shader_sample_direct(ish, &src);
 
-    if (data.linear)
+    if (d->linear)
         pl_shader_linearize(ish, &cs);
 
-    if (data.sigmoid_params.get())
-        pl_shader_sigmoidize(ish, data.sigmoid_params.get());
+    if (d->sigmoid_params.get())
+        pl_shader_sigmoidize(ish, d->sigmoid_params.get());
 
     pl_dispatch_params dp{};
     dp.target = sample_fbo;
     dp.shader = &ish;
 
-    if (!pl_dispatch_finish(p.dp, &dp))
+    if (!pl_dispatch_finish(d->vf->dp, &dp))
         return -1;
 
     //
@@ -74,18 +76,18 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
 
     const float src_w{ [&]()
     {
-        if (data.src_width > -1.0f)
-            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (data.src_width / data.subw) : data.src_width;
+        if (d->src_width > -1.0f)
+            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_width / d->subw) : d->src_width;
         else
-            return static_cast<float>(p.tex_in[0]->params.w);
+            return static_cast<float>(d->vf->tex_in[0]->params.w);
     }() };
 
     const float src_h{ [&]()
     {
-        if (data.src_height > -1.0f)
-            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (data.src_height / data.subh) : data.src_height;
+        if (d->src_height > -1.0f)
+            return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_height / d->subh) : d->src_height;
         else
-            return static_cast<float>(p.tex_in[0]->params.h);
+            return static_cast<float>(d->vf->tex_in[0]->params.h);
     }() };
 
     pl_rect2df rect{ sx, sy, src_w + sx, src_h + sy, };
@@ -95,9 +97,9 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
     src.new_h = h;
     src.new_w = w;
 
-    if (data.sample_params->filter.polar)
+    if (d->sample_params->filter.polar)
     {
-        if (!pl_shader_sample_polar(sh, &src, &sample_params))
+        if (!pl_shader_sample_polar(sh, &src, sample_params))
             return -1;
     }
     else
@@ -109,105 +111,164 @@ static int resample_do_plane(priv& p, resample& data, pl_shader_obj& lut, const 
         src1.rect.y0 = 0;
         src1.rect.y1 = src.new_h;
 
-        pl_shader tsh{ pl_dispatch_begin(p.dp) };
+        pl_shader tsh{ pl_dispatch_begin(d->vf->dp) };
 
-        if (!pl_shader_sample_ortho2(tsh, &src, &sample_params))
+        if (!pl_shader_sample_ortho2(tsh, &src, sample_params))
         {
-            pl_dispatch_abort(p.dp, &tsh);
+            pl_dispatch_abort(d->vf->dp, &tsh);
             return -1;
         }
 
         tp.w = src.new_w;
         tp.h = src.new_h;
 
-        if (!pl_tex_recreate(p.gpu, &sep_fbo, &tp))
+        if (!pl_tex_recreate(d->vf->gpu, &sep_fbo, &tp))
             return -1;
 
         dp.target = sep_fbo;
         dp.shader = &tsh;
 
-        if (!pl_dispatch_finish(p.dp, &dp))
+        if (!pl_dispatch_finish(d->vf->dp, &dp))
             return -1;
 
         src1.tex = sep_fbo;
         src1.scale = 1.0f;
 
-        if (!pl_shader_sample_ortho2(sh, &src1, &sample_params))
+        if (!pl_shader_sample_ortho2(sh, &src1, sample_params))
             return -1;
     }
 
-    if (data.sigmoid_params.get())
-        pl_shader_unsigmoidize(sh, data.sigmoid_params.get());
+    if (d->sigmoid_params.get())
+        pl_shader_unsigmoidize(sh, d->sigmoid_params.get());
 
-    if (data.linear)
+    if (d->linear)
         pl_shader_delinearize(sh, &cs);
 
-    dp.target = p.tex_out[0];
+    dp.target = d->vf->tex_out[0];
     dp.shader = &sh;
 
-    if (!pl_dispatch_finish(p.dp, &dp))
+    if (!pl_dispatch_finish(d->vf->dp, &dp))
         return -1;
 
-    pl_tex_destroy(p.gpu, &sep_fbo);
-    pl_tex_destroy(p.gpu, &sample_fbo);
+    pl_tex_destroy(d->vf->gpu, &sep_fbo);
+    pl_tex_destroy(d->vf->gpu, &sample_fbo);
 
     return 0;
 }
 
-static int resample_reconfig(priv& p, const pl_plane_data& data, const int w, const int h)
+template <typename T>
+static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d, const AVS_FilterInfo* fi) noexcept
 {
-    pl_fmt fmt{ pl_plane_find_fmt(p.gpu, nullptr, &data) };
-    if (!fmt)
-        return -1;
-
-    pl_tex_params t_r{};
-    t_r.w = data.width;
-    t_r.h = data.height;
-    t_r.format = fmt;
-    t_r.sampleable = true;
-    t_r.host_writable = true;
-
-    if (pl_tex_recreate(p.gpu, &p.tex_in[0], &t_r))
+    const auto error{ [&](pl_shader_obj lut)
     {
-        t_r.w = w;
-        t_r.h = h;
+        pl_shader_obj_destroy(&lut);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
+
+        return -1;
+    } };
+
+    const pl_fmt fmt{ [&]()
+    {
+        if constexpr (std::is_same_v<T, uint8_t>)
+            return pl_find_named_fmt(d->vf->gpu, "r8");
+        else if constexpr (std::is_same_v<T, uint16_t>)
+            return pl_find_named_fmt(d->vf->gpu, "r16");
+        else
+            return pl_find_named_fmt(d->vf->gpu, "r32f");
+    }() };
+    if (!fmt)
+        return error(nullptr);
+
+    constexpr int planes_y[4]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V, AVS_PLANAR_A };
+    constexpr int planes_r[4]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B, AVS_PLANAR_A };
+    const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
+    const int num_planes{ avs_num_components(&fi->vi) };
+
+    for (int i{ 0 }; i < num_planes; ++i)
+    {
+        const int plane{ planes[i] };
+
+        const size_t dst_width{ avs_get_row_size_p(dst, plane) / sizeof(T) };
+        const int dst_height = avs_get_height_p(dst, plane);
+
+        pl_plane_data pl{};
+        pl.pixel_stride = sizeof(T);
+        if constexpr (std::is_same_v<T, uint8_t>)
+        {
+            pl.type = PL_FMT_UNORM;
+            pl.component_size[0] = 8;
+        }
+        else if constexpr (std::is_same_v<T, uint16_t>)
+        {
+            pl.type = PL_FMT_UNORM;
+            pl.component_size[0] = 16;
+        }
+        else
+        {
+            pl.type = PL_FMT_FLOAT;
+            pl.component_size[0] = 32;
+        }
+        pl.width = avs_get_row_size_p(src, plane) / sizeof(T);
+        pl.height = avs_get_height_p(src, plane);
+        pl.row_stride = avs_get_pitch_p(src, plane);
+        pl.pixels = avs_get_read_ptr_p(src, plane);
+
+        std::lock_guard<std::mutex> lck(mtx);
+
+        pl_shader_obj lut{};
+
+        // Upload planes
+        if (!pl_upload_plane(d->vf->gpu, nullptr, &d->vf->tex_in[0], &pl))
+            return error(lut);
+
+        pl_tex_params t_r{};
+        t_r.format = fmt;
+        t_r.w = dst_width;
+        t_r.h = dst_height;
         t_r.sampleable = false;
         t_r.host_writable = false;
         t_r.renderable = true;
         t_r.host_readable = true;
         t_r.storable = true;
 
-        if (!pl_tex_recreate(p.gpu, &p.tex_out[0], &t_r))
-            return -1;
+        if (!pl_tex_recreate(d->vf->gpu, &d->vf->tex_out[0], &t_r))
+            return error(lut);
+
+        // Process plane
+        if (resample_do_plane(d, &lut, dst_width, dst_height, (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
+            (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y, plane))
+            return error(lut);
+
+        const size_t dst_stride{ (avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1) };
+        pl_buf_params buf_params{};
+        buf_params.size = dst_stride * t_r.h;
+        buf_params.host_mapped = true;
+
+        pl_buf dst_buf{};
+        if (!pl_buf_recreate(d->vf->gpu, &dst_buf, &buf_params))
+            return error(lut);
+
+        pl_tex_transfer_params ttr{};
+        ttr.tex = d->vf->tex_out[0];
+        ttr.row_pitch = dst_stride;
+        ttr.buf = dst_buf;
+
+        // Download planes
+        if (!pl_tex_download(d->vf->gpu, &ttr))
+        {
+            pl_buf_destroy(d->vf->gpu, &dst_buf);
+            return error(lut);
+        }
+
+        pl_shader_obj_destroy(&lut);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
+        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
+
+        while (pl_buf_poll(d->vf->gpu, dst_buf, 0));
+        memcpy(avs_get_write_ptr_p(dst, plane), dst_buf->data, dst_buf->params.size);
+        pl_buf_destroy(d->vf->gpu, &dst_buf);
     }
-    else
-        return -1;
-
-    return 0;
-}
-
-static int resample_filter(priv& p, AVS_VideoFrame* dst, const pl_plane_data& src, resample& d, pl_shader_obj& lut, const int w, const int h, const float sx, const float sy, const int planeIdx)
-{
-    // Upload planes
-    pl_tex_transfer_params ttr{};
-    ttr.tex = p.tex_in[0];
-    ttr.row_pitch = src.row_stride;
-    ttr.ptr = const_cast<void*>(src.pixels);
-
-    if (!pl_tex_upload(p.gpu, &ttr))
-        return -1;
-
-    // Process plane
-    if (resample_do_plane(p, d, lut, w, h, sx, sy, planeIdx))
-        return -1;
-
-    ttr.tex = p.tex_out[0];
-    ttr.row_pitch = avs_get_pitch_p(dst, planeIdx);
-    ttr.ptr = reinterpret_cast<void*>(avs_get_write_ptr_p(dst, planeIdx));
-
-    // Download planes
-    if (!pl_tex_download(p.gpu, &ttr))
-        return -1;
 
     return 0;
 }
@@ -216,66 +277,19 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
 {
     resample* d{ reinterpret_cast<resample*>(fi->user_data) };
 
-    const char* ErrorText{ 0 };
     AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
     if (!src)
         return nullptr;
 
     AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
 
-    constexpr int planes_y[4]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V, AVS_PLANAR_A };
-    constexpr int planes_r[4]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B, AVS_PLANAR_A };
-    const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
-    const int num_planes{ avs_num_components(&fi->vi) };
-    pl_plane_data plane{};
-    plane.type = (avs_component_size(&fi->vi) < 4) ? PL_FMT_UNORM : PL_FMT_FLOAT;
-    plane.component_size[0] = avs_bits_per_component(&fi->vi);
-
-    for (int i{ 0 }; i < num_planes && !ErrorText; ++i)
+    if (d->resample_process(dst, src, d, fi))
     {
-        plane.width = avs_get_row_size_p(src, planes[i]) / avs_component_size(&fi->vi);
-        plane.height = avs_get_height_p(src, planes[i]);
-        plane.pixel_stride = avs_component_size(&fi->vi);
-        plane.row_stride = avs_get_pitch_p(src, planes[i]);
-        plane.pixels = avs_get_read_ptr_p(src, planes[i]);
-
-        const int dst_width{ avs_get_row_size_p(dst, planes[i]) / avs_component_size(&fi->vi) };
-        const int dst_height = avs_get_height_p(dst, planes[i]);
-
-        {
-            std::lock_guard<std::mutex> lck(mtx);
-
-            pl_shader_obj lut{};
-
-            if (!resample_reconfig(*d->vf.get(), plane, dst_width, dst_height))
-            {
-                if (resample_filter(*d->vf.get(), dst, plane, *d, lut, dst_width, dst_height,
-                    (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
-                    (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y,
-                    planes[i]))
-                {
-                    d->msg = "libplacebo_Resample: " + d->vf->log_buffer.str();
-                    ErrorText = d->msg.c_str();
-                }
-            }
-            else
-            {
-                d->msg = "libplacebo_Resample: " + d->vf->log_buffer.str();
-                ErrorText = d->msg.c_str();
-            }
-
-            pl_shader_obj_destroy(&lut);
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
-        }
-    }
-
-    if (ErrorText)
-    {
+        d->msg = "libplacebo_Resample: " + d->vf->log_buffer.str();
         avs_release_video_frame(src);
         avs_release_video_frame(dst);
 
-        fi->error = ErrorText;
+        fi->error = d->msg.c_str();
 
         return nullptr;
     }
@@ -315,9 +329,11 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     if (avs_is_error(avs_ver))
         return avs_ver;
 
+    const int bits{ avs_bits_per_component(&fi->vi) };
+
     if (!avs_is_planar(&fi->vi))
         return set_error(clip, "libplacebo_Resample: clip must be in planar format.", nullptr);
-    if (avs_bits_per_component(&fi->vi) != 8 && avs_bits_per_component(&fi->vi) != 16 && avs_bits_per_component(&fi->vi) != 32)
+    if (bits != 8 && bits != 16 && bits != 32)
         return set_error(clip, "libplacebo_Resample: bit depth must be 8, 16 or 32-bit.", nullptr);
 
     const int w{ fi->vi.width };
@@ -459,6 +475,13 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     }
     else
         params->src_height = -1.0f;
+
+    switch (bits)
+    {
+        case 8: params->resample_process = resample_filter<uint8_t>; break;
+        case 16: params->resample_process = resample_filter<uint16_t>; break;
+        default:params->resample_process = resample_filter<float>; break;
+    }
 
     AVS_Value v{ avs_new_value_clip(clip) };
 

@@ -1,3 +1,9 @@
+##### 1.5.2:
+    Tonemap: allowed SDR->HDR conversion.
+    Tonemap: fixed opening lut file in some cases (ACP).
+    Shader: fixed opening shader file in some cases (ACP).
+    Deband/Resample: improved speed (faster upload/dowload data).
+
 ##### 1.5.1:
     Resample/Shader:  fixed `param1` and `param2`.
     libplacebo error messages are propagated.

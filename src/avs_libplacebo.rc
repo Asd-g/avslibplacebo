@@ -1,8 +1,8 @@
 #include <winver.h>
 
 1 VERSIONINFO
-FILEVERSION             1,5,1,0
-PRODUCTVERSION        	1,5,1,0
+FILEVERSION             1,5,2,0
+PRODUCTVERSION        	1,5,2,0
 FILEFLAGSMASK           VS_FFI_FILEFLAGSMASK
 FILETYPE                VFT_DLL
 BEGIN
@@ -12,11 +12,11 @@ BEGIN
         BEGIN
         VALUE "Comments",         "AviSynth+ plugin interface to libplacebo."
         VALUE "FileDescription",  "avs_libplacebo for AviSynth+."
-        VALUE "FileVersion",      "1.5.1"
+        VALUE "FileVersion",      "1.5.2"
         VALUE "InternalName",     "avs_libplacebo"
         VALUE "OriginalFilename", "avs_libplacebo.dll"
         VALUE "ProductName",      "avs_libplacebo"
-        VALUE "ProductVersion",   "1.5.1"
+        VALUE "ProductVersion",   "1.5.2"
         END
     END
     BLOCK "VarFileInfo"
