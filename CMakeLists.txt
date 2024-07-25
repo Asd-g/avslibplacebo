@@ -31,7 +31,7 @@ target_include_directories(avs_libplacebo PRIVATE
 )
 
 if (UNIX)
-    target_include_directories(DoViBaker PRIVATE
+    target_include_directories(avs_libplacebo PRIVATE
         /usr/local/include/avisynth
         /usr/local/include
     )
