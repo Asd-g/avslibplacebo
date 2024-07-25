@@ -547,8 +547,10 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
 {
     enum
     {
-        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period, Scene_threshold_low, Scene_threshold_high, Percentile, Gamut_mapping_mode, Tone_mapping_function, Tone_constants,
-        Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi, Device, List_device, Cscale, Lut, Lut_type, Dst_prim, Dst_trc, Dst_sys
+        Clip, Src_csp, Dst_csp, Src_max, Src_min, Dst_max, Dst_min, Dynamic_peak_detection, Smoothing_period,
+        Scene_threshold_low, Scene_threshold_high, Percentile, Black_cutoff, Gamut_mapping_mode, Tone_mapping_function,
+        Tone_constants, Metadata, Contrast_recovery, Contrast_smoothness, Visualize_lut, Show_clipping, Use_dovi,
+        Device, List_device, Cscale, Lut, Lut_type, Dst_prim, Dst_trc, Dst_sys
     };
 
     AVS_FilterInfo* fi;
@@ -814,6 +816,8 @@ AVS_Value AVSC_CC create_tonemap(AVS_ScriptEnvironment* env, AVS_Value args, voi
             params->peakDetectParams->scene_threshold_high = avs_as_float(avs_array_elt(args, Scene_threshold_high));
         if (avs_defined(avs_array_elt(args, Percentile)))
             params->peakDetectParams->percentile = avs_as_float(avs_array_elt(args, Percentile));
+        if (avs_defined(avs_array_elt(args, Black_cutoff)))
+            params->peakDetectParams->black_cutoff = avs_as_float(avs_array_elt(args, Black_cutoff));
 
         if (avs_defined(avs_array_elt(args, Src_max)))
         {

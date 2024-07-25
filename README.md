@@ -492,7 +492,7 @@ libplacebo_Shader(clip input, string shader, int "width", int "height", int "chr
 #### Usage:
 
 ```
-libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", string "gamut_mapping_mode", string "tone_mapping_function", string[] "tone_constants", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale", string "lut", int "lut_type", int "dst_prim", int "dst_trc", int "dst_sys")
+libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", float "src_min", float "dst_max", float "dst_min", bool "dynamic_peak_detection", float "smoothing_period", float "scene_threshold_low", float "scene_threshold_high", float "percentile", float "black_cutoff", string "gamut_mapping_mode", string "tone_mapping_function", string[] "tone_constants", int "metadata", float "contrast_recovery", float "contrast_smoothness", bool "visualize_lut", bool "show_clipping", bool "use_dovi", int "device", bool "list_device", string "cscale", string "lut", int "lut_type", int "dst_prim", int "dst_trc", int "dst_sys")
 ```
 
 #### Parameters:
@@ -538,6 +538,12 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
     If this is set to 100 (or 0), the brightest pixel is measured. Otherwise, the top of the frequency distribution is progressively cut off.<br>
     Setting this too low will cause clipping of very bright details, but can improve the dynamic brightness range of scenes with very bright isolated highlights.<br>
     The default of 99.995% is very conservative and should cause no major issues in typical content.
+
+- black_cutoff<br>
+    Black cutoff strength.<br>
+    To prevent unnatural pixel shimmer and excessive darkness in mostly black scenes, as well as avoid black bars from affecting the content, (smoothly) cut off any value below this (PQ%) threshold.<br>
+    Setting this to 0.0 (or a negative value) disables this functionality.<br>
+    Default: 1.0 (1% PQ).
 
 - gamut_mapping_mode<br>
     Specifies the algorithm used for reducing the gamut of images for the target display, after any tone mapping is done.<br>
