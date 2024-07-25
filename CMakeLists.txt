@@ -1,6 +1,14 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.25)
+
+if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
+    if (NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+    endif()
+endif()
 
 project(avs_libplacebo LANGUAGES CXX)
+
+find_package(Vulkan REQUIRED COMPONENTS shaderc_combined)
 
 set(sources
     ${CMAKE_CURRENT_SOURCE_DIR}/src/common.cpp
@@ -17,25 +25,46 @@ endif()
 
 add_library(avs_libplacebo SHARED ${sources})
 
-target_include_directories(avs_libplacebo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(avs_libplacebo PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${Vulkan_INCLUDE_DIRS}
+)
 
 if (UNIX)
-    target_include_directories(avs_libplacebo PRIVATE
-    /usr/local/include/avisynth
-    /usr/local/include
-    )
-else()
-    target_include_directories(avs_libplacebo PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../AviSynthPlus/avs_core/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/deps_gcc/include"
+    target_include_directories(DoViBaker PRIVATE
+        /usr/local/include/avisynth
+        /usr/local/include
     )
 endif()
 
-if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
-    if (NOT CMAKE_BUILD_TYPE)
-        set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-    endif()
+if (WIN32)
+    target_link_libraries(avs_libplacebo PRIVATE
+        ws2_32
+        bcrypt
+        userenv
+        shlwapi
+        Ntdll
+    )
+endif()
 
+find_library(dovi dovi)
+find_library(libplacebo libplacebo)
+
+target_link_libraries(avs_libplacebo PRIVATE
+    avisynth
+    Vulkan::Vulkan
+    Vulkan::shaderc_combined
+    ${dovi}
+    ${libplacebo}
+)
+
+if (MINGW)
+    set_target_properties(avs_libplacebo PROPERTIES PREFIX "")
+
+    target_link_libraries(avs_libplacebo PRIVATE -static-libgcc -static-libstdc++ -s)
+endif()
+
+if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
     string(TOLOWER ${CMAKE_BUILD_TYPE} build_type)
     if (build_type STREQUAL Debug)
         target_compile_definitions(avs_libplacebo PRIVATE DEBUG_BUILD)
@@ -43,33 +72,14 @@ if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
         target_compile_definitions(avs_libplacebo PRIVATE RELEASE_BUILD)
     endif()
 
-    target_compile_options(avs_libplacebo PRIVATE $<$<CONFIG:Release>:-s -DPL_STATIC>)
+    target_compile_options(avs_libplacebo PRIVATE $<$<CONFIG:Release>:-s>)
 
     message(STATUS "Build type - ${CMAKE_BUILD_TYPE}")
 endif()
 
-target_compile_features(avs_libplacebo PRIVATE cxx_std_17)
+target_compile_options(avs_libplacebo PRIVATE "-DPL_STATIC")
 
-target_link_libraries(avs_libplacebo PRIVATE
-    avisynth
-    placebo
-    vulkan-1
-    dovi
-    shaderc_combined
-)
-
-if (MINGW)
-    target_link_libraries(avs_libplacebo PRIVATE
-        ws2_32
-        bcrypt
-        userenv
-        shlwapi
-    )
-
-    set_target_properties(avs_libplacebo PROPERTIES PREFIX "")
-
-    target_link_libraries(avs_libplacebo PRIVATE -static-libgcc -static-libstdc++ -s)
-endif()
+target_compile_features(avs_libplacebo PRIVATE cxx_std_20)
 
 if (UNIX)
     find_package (Git)

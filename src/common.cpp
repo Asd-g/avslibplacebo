@@ -2,7 +2,7 @@
 
 #include "avs_libplacebo.h"
 
-static_assert(PL_API_VER >= 338, "libplacebo version must be at least v6.338.0.");
+static_assert(PL_API_VER >= 349, "libplacebo version must be at least v7.349.0.");
 
 static void pl_logging(void* stream, pl_log_level level, const char* msg)
 {

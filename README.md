@@ -834,43 +834,45 @@ libplacebo_Tonemap(clip input, int "src_csp", float "dst_csp", float "src_max", 
 
 ### Building:
 
-- Windows
-    ```
-    Requirements:
-        - Clang-cl (https://github.com/llvm/llvm-project/releases) / GCC
-        - Vulkan SDK (https://vulkan.lunarg.com/sdk/home#windows)
-        - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
-        - libplacebo (https://gitlab.com/uvz/libplacebo) (v6.338.1 or later)
-    ```
-    ```
-    Steps:
-        Install Vulkan SDk.
-        Clone the repo:
-            git clone --recurse-submodules https://github.com/Asd-g/avslibplacebo
-        Set prefix:
-            cd avslibplacebo
-            set prefix="%cd%\deps"
-        Build dolby_vision:
-            cd dovi_tool\dolby_vision
-            cargo install cargo-c
-            cargo cinstall --release --prefix %prefix%
-        Building libplacebo:
-            cd ..\..\libplacebo
-            set LIB=%LIB%;C:\VulkanSDK\1.3.268.0\Lib
-            meson setup build -Dvulkan-registry=C:\VulkanSDK\1.3.268.0\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix%
-            cd build
-            ninja
-            ninja install
-        Use solution files to build avs_libplacebo.
-    ```
+```
+Requirements:
+    - CMake
+    - Ninja
+    - Vulkan SDK (https://vulkan.lunarg.com/sdk)
+    - Clang-cl (https://github.com/llvm/llvm-project/releases) (Windows)
+```
 
-- Linux
-    ```
-    Requirements:
-        - Vulkan lib
-        - dolby_vision C-lib (https://github.com/quietvoid/dovi_tool/blob/main/dolby_vision/README.md)
-        - libplacebo (https://code.videolan.org/videolan/libplacebo) (v6.338.1 or later)
-        - AviSynth lib
-    ```
+```
+Steps:
+    Install Vulkan SDk.
+
+    Clone the repo:
+        git clone --recurse-submodules --depth 1 --shallow-submodules https://github.com/Asd-g/avslibplacebo
+
+    Set prefix:
+        cd avslibplacebo
+        set prefix="%cd%\deps" (Windows)
+        prefix="$(pwd)/deps" (Linux)
+
+    Build dolby_vision:
+        cd dovi_tool/dolby_vision
+        cargo install cargo-c
+        cargo cinstall --release --prefix %prefix% (Windows)
+        cargo cinstall --release --prefix $prefix (Linux)
+
+    Building libplacebo:
+        cd ../../libplacebo
+        set LIB=%LIB%;C:\VulkanSDK\1.3.268.0\Lib (Windows)
+        meson setup build -Dvulkan-registry=C:\VulkanSDK\1.3.283.0\share\vulkan\registry\vk.xml --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=%prefix% (Windows)
+        meson setup build --default-library=static --buildtype=release -Ddemos=false -Dopengl=disabled -Dd3d11=disabled --prefix=$prefix (Linux)
+        ninja -C build
+        ninja -C build install
+
+    Building plugin:
+        cd ../
+        cmake -B build -G Ninja -DCMAKE_PREFIX_PATH="c:\VulkanSDK\1.3.283.0;%prefix%" (Windows)
+        cmake -B build -G Ninja -DCMAKE_PREFIX_PATH=$prefix (Linux)
+        ninja -C build
+```
 
 [Back to top](#description)
