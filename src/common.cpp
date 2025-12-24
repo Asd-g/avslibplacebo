@@ -6,15 +6,7 @@ static_assert(PL_API_VER >= 349, "libplacebo version must be at least v7.349.0."
 
 static void pl_logging(void* stream, pl_log_level level, const char* msg)
 {
-    constexpr const char* const constants_list[]
-    {
-        "[fatal] ",
-        "[error] ",
-        "[warn] ",
-        "[info] ",
-        "[debug] ",
-        "[trace] "
-    };
+    constexpr const char* const constants_list[]{"[fatal] ", "[error] ", "[warn] ", "[info] ", "[debug] ", "[trace] "};
 
     if (level <= PL_LOG_WARN)
         std::cerr << constants_list[level - 1] << msg << "\n";
@@ -24,10 +16,10 @@ static void pl_logging(void* stream, pl_log_level level, const char* msg)
 
 std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device, std::string& err_msg)
 {
-    std::unique_ptr<priv> p{ std::make_unique<priv>() };
-    //std::cout.rdbuf(p->log_buffer.rdbuf());
+    std::unique_ptr<priv> p{std::make_unique<priv>()};
+    // std::cout.rdbuf(p->log_buffer.rdbuf());
     std::cerr.rdbuf(p->log_buffer.rdbuf());
-    pl_log_params log_params{ pl_logging, nullptr, PL_LOG_ERR };
+    pl_log_params log_params{pl_logging, nullptr, PL_LOG_ERR};
     p->log = pl_log_create(0, &log_params);
 
     pl_vulkan_params vp{};
@@ -82,12 +74,13 @@ void avs_libplacebo_uninit(const std::unique_ptr<struct priv>& p)
     pl_log_destroy(&p->log);
 }
 
-AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, const std::string& name, const int device, const int list_device)
+AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst,
+    std::string& msg, const std::string& name, const int device, const int list_device)
 {
     VkInstanceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 
-    uint32_t dev_count{ 0 };
+    uint32_t dev_count{0};
 
     if (vkCreateInstance(&info, nullptr, &inst))
     {
@@ -129,7 +122,7 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
 
     if (list_device)
     {
-        for (size_t i{ 0 }; i < devices.size(); ++i)
+        for (size_t i{0}; i < devices.size(); ++i)
         {
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(devices[i], &properties);
@@ -139,9 +132,9 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
 
         vkDestroyInstance(inst, nullptr);
 
-        AVS_Value cl{ avs_new_value_clip(clip) };
-        AVS_Value args_[2]{ cl, avs_new_value_string(msg.c_str()) };
-        AVS_Value inv{ avs_invoke(env, "Text", avs_new_value_array(args_, 2), 0) };
+        AVS_Value cl{avs_new_value_clip(clip)};
+        AVS_Value args_[2]{cl, avs_new_value_string(msg.c_str())};
+        AVS_Value inv{avs_invoke(env, "Text", avs_new_value_array(args_, 2), 0)};
 
         avs_release_value(cl);
         avs_release_clip(clip);
@@ -163,7 +156,6 @@ AVS_Value avs_version(std::string& msg, const std::string& name, AVS_ScriptEnvir
                 msg = name + ": AviSynth+ version must be r3688 or later.";
                 return avs_new_value_error(msg.c_str());
             }
-
         }
     }
     else

@@ -25,13 +25,14 @@ struct resample
     int (*resample_process)(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d, const AVS_FilterInfo* fi) noexcept;
 };
 
-static int resample_do_plane(const resample* d, pl_shader_obj* lut, const int w, const int h, const float sx, const float sy, const int planeIdx) noexcept
+static int resample_do_plane(
+    const resample* d, pl_shader_obj* lut, const int w, const int h, const float sx, const float sy, const int planeIdx) noexcept
 {
-    pl_shader sh{ pl_dispatch_begin(d->vf->dp) };
+    pl_shader sh{pl_dispatch_begin(d->vf->dp)};
     pl_tex sample_fbo{};
     pl_tex sep_fbo{};
 
-    pl_sample_filter_params* sample_params{ d->sample_params.get() };
+    pl_sample_filter_params* sample_params{d->sample_params.get()};
     sample_params->lut = lut;
 
     pl_color_space cs{};
@@ -44,7 +45,7 @@ static int resample_do_plane(const resample* d, pl_shader_obj* lut, const int w,
     // linearization and sigmoidization
     //
 
-    pl_shader ish{ pl_dispatch_begin(d->vf->dp) };
+    pl_shader ish{pl_dispatch_begin(d->vf->dp)};
     pl_tex_params tp{};
     tp.w = src.tex->params.w;
     tp.h = src.tex->params.h;
@@ -74,23 +75,26 @@ static int resample_do_plane(const resample* d, pl_shader_obj* lut, const int w,
     // sampling
     //
 
-    const float src_w{ [&]()
-    {
+    const float src_w{[&]() {
         if (d->src_width > -1.0f)
             return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_width / d->subw) : d->src_width;
         else
             return static_cast<float>(d->vf->tex_in[0]->params.w);
-    }() };
+    }()};
 
-    const float src_h{ [&]()
-    {
+    const float src_h{[&]() {
         if (d->src_height > -1.0f)
             return (planeIdx == AVS_PLANAR_U || planeIdx == AVS_PLANAR_V) ? (d->src_height / d->subh) : d->src_height;
         else
             return static_cast<float>(d->vf->tex_in[0]->params.h);
-    }() };
+    }()};
 
-    pl_rect2df rect{ sx, sy, src_w + sx, src_h + sy, };
+    pl_rect2df rect{
+        sx,
+        sy,
+        src_w + sx,
+        src_h + sy,
+    };
 
     src.tex = sample_fbo;
     src.rect = rect;
@@ -111,7 +115,7 @@ static int resample_do_plane(const resample* d, pl_shader_obj* lut, const int w,
         src1.rect.y0 = 0;
         src1.rect.y1 = src.new_h;
 
-        pl_shader tsh{ pl_dispatch_begin(d->vf->dp) };
+        pl_shader tsh{pl_dispatch_begin(d->vf->dp)};
 
         if (!pl_shader_sample_ortho2(tsh, &src, sample_params))
         {
@@ -156,40 +160,38 @@ static int resample_do_plane(const resample* d, pl_shader_obj* lut, const int w,
     return 0;
 }
 
-template <typename T>
+template<typename T>
 static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d, const AVS_FilterInfo* fi) noexcept
 {
-    const auto error{ [&](pl_shader_obj lut)
-    {
+    const auto error{[&](pl_shader_obj lut) {
         pl_shader_obj_destroy(&lut);
         pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
         pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
 
         return -1;
-    } };
+    }};
 
-    const pl_fmt fmt{ [&]()
-    {
+    const pl_fmt fmt{[&]() {
         if constexpr (std::is_same_v<T, uint8_t>)
             return pl_find_named_fmt(d->vf->gpu, "r8");
         else if constexpr (std::is_same_v<T, uint16_t>)
             return pl_find_named_fmt(d->vf->gpu, "r16");
         else
             return pl_find_named_fmt(d->vf->gpu, "r32f");
-    }() };
+    }()};
     if (!fmt)
         return error(nullptr);
 
-    constexpr int planes_y[4]{ AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V, AVS_PLANAR_A };
-    constexpr int planes_r[4]{ AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B, AVS_PLANAR_A };
-    const int* planes{ (avs_is_rgb(&fi->vi)) ? planes_r : planes_y };
-    const int num_planes{ avs_num_components(&fi->vi) };
+    constexpr int planes_y[4]{AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V, AVS_PLANAR_A};
+    constexpr int planes_r[4]{AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B, AVS_PLANAR_A};
+    const int* planes{(avs_is_rgb(&fi->vi)) ? planes_r : planes_y};
+    const int num_planes{avs_num_components(&fi->vi)};
 
-    for (int i{ 0 }; i < num_planes; ++i)
+    for (int i{0}; i < num_planes; ++i)
     {
-        const int plane{ planes[i] };
+        const int plane{planes[i]};
 
-        const size_t dst_width{ avs_get_row_size_p(dst, plane) / sizeof(T) };
+        const size_t dst_width{avs_get_row_size_p(dst, plane) / sizeof(T)};
         const int dst_height = avs_get_height_p(dst, plane);
 
         pl_plane_data pl{};
@@ -237,10 +239,11 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
 
         // Process plane
         if (resample_do_plane(d, &lut, dst_width, dst_height, (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
-            (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y, plane))
+                (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y, plane))
             return error(lut);
 
-        const size_t dst_stride{ (avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1) };
+        const size_t dst_stride{(avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) &
+                                ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1)};
         pl_buf_params buf_params{};
         buf_params.size = dst_stride * t_r.h;
         buf_params.host_mapped = true;
@@ -265,7 +268,8 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
         pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
         pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
 
-        while (pl_buf_poll(d->vf->gpu, dst_buf, 0));
+        while (pl_buf_poll(d->vf->gpu, dst_buf, 0))
+            ;
         memcpy(avs_get_write_ptr_p(dst, plane), dst_buf->data, dst_buf->params.size);
         pl_buf_destroy(d->vf->gpu, &dst_buf);
     }
@@ -275,13 +279,13 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
 
 static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
 {
-    resample* d{ reinterpret_cast<resample*>(fi->user_data) };
+    resample* d{reinterpret_cast<resample*>(fi->user_data)};
 
-    AVS_VideoFrame* src{ avs_get_frame(fi->child, n) };
+    AVS_VideoFrame* src{avs_get_frame(fi->child, n)};
     if (!src)
         return nullptr;
 
-    AVS_VideoFrame* dst{ avs_new_video_frame_p(fi->env, &fi->vi, src) };
+    AVS_VideoFrame* dst{avs_new_video_frame_p(fi->env, &fi->vi, src)};
 
     if (d->resample_process(dst, src, d, fi))
     {
@@ -305,7 +309,7 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
 
 static void AVSC_CC free_resample(AVS_FilterInfo* fi)
 {
-    resample* d{ reinterpret_cast<resample*>(fi->user_data) };
+    resample* d{reinterpret_cast<resample*>(fi->user_data)};
 
     avs_libplacebo_uninit(d->vf);
     delete d;
@@ -318,36 +322,61 @@ static int AVSC_CC resample_set_cache_hints(AVS_FilterInfo* fi, int cachehints, 
 
 AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, void* param)
 {
-    enum { Clip, Width, Height, Filter, Radius, Clamp, Taper, Blur, Param1, Param2, Sx, Sy, Antiring, Sigmoidize, Linearize, Sigmoid_center, Sigmoid_slope, Trc, Cplace, Device, List_device, Src_width, Src_height };
+    enum
+    {
+        Clip,
+        Width,
+        Height,
+        Filter,
+        Radius,
+        Clamp,
+        Taper,
+        Blur,
+        Param1,
+        Param2,
+        Sx,
+        Sy,
+        Antiring,
+        Sigmoidize,
+        Linearize,
+        Sigmoid_center,
+        Sigmoid_slope,
+        Trc,
+        Cplace,
+        Device,
+        List_device,
+        Src_width,
+        Src_height
+    };
 
     AVS_FilterInfo* fi;
-    AVS_Clip* clip{ avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1) };
+    AVS_Clip* clip{avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1)};
 
-    resample* params{ new resample() };
+    resample* params{new resample()};
 
-    AVS_Value avs_ver{ avs_version(params->msg, "libplacebo_Resample", env) };
+    AVS_Value avs_ver{avs_version(params->msg, "libplacebo_Resample", env)};
     if (avs_is_error(avs_ver))
         return avs_ver;
 
-    const int bits{ avs_bits_per_component(&fi->vi) };
+    const int bits{avs_bits_per_component(&fi->vi)};
 
     if (!avs_is_planar(&fi->vi))
         return set_error(clip, "libplacebo_Resample: clip must be in planar format.", nullptr);
     if (bits != 8 && bits != 16 && bits != 32)
         return set_error(clip, "libplacebo_Resample: bit depth must be 8, 16 or 32-bit.", nullptr);
 
-    const int w{ fi->vi.width };
-    const int h{ fi->vi.height };
+    const int w{fi->vi.width};
+    const int h{fi->vi.height};
 
-    const int device{ avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1 };
-    const int list_device{ avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0 };
+    const int device{avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1};
+    const int list_device{avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0};
 
     if (list_device || device > -1)
     {
         std::vector<VkPhysicalDevice> devices{};
         VkInstance inst{};
 
-        AVS_Value dev_info{ devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Resample", device, list_device) };
+        AVS_Value dev_info{devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Resample", device, list_device)};
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
             return dev_info;
 
@@ -383,17 +412,19 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 
         if (params->linear)
         {
-            const int sigmoid{ (avs_defined(avs_array_elt(args, Sigmoidize))) ? avs_as_bool(avs_array_elt(args, Sigmoidize)) : 1 };
+            const int sigmoid{(avs_defined(avs_array_elt(args, Sigmoidize))) ? avs_as_bool(avs_array_elt(args, Sigmoidize)) : 1};
 
             if (sigmoid)
             {
                 params->sigmoid_params = std::make_unique<pl_sigmoid_params>();
 
-                params->sigmoid_params->center = (avs_defined(avs_array_elt(args, Sigmoid_center))) ? avs_as_float(avs_array_elt(args, Sigmoid_center)) : 0.75f;
+                params->sigmoid_params->center =
+                    (avs_defined(avs_array_elt(args, Sigmoid_center))) ? avs_as_float(avs_array_elt(args, Sigmoid_center)) : 0.75f;
                 if (params->sigmoid_params->center < 0.0f || params->sigmoid_params->center > 1.0f)
                     return set_error(clip, "libplacebo_Resample: sigmoid_center must be between 0.0 and 1.0.", params->vf);
 
-                params->sigmoid_params->slope = (avs_defined(avs_array_elt(args, Sigmoid_slope))) ? avs_as_float(avs_array_elt(args, Sigmoid_slope)) : 6.5f;
+                params->sigmoid_params->slope =
+                    (avs_defined(avs_array_elt(args, Sigmoid_slope))) ? avs_as_float(avs_array_elt(args, Sigmoid_slope)) : 6.5f;
                 if (params->sigmoid_params->slope < 1.0f || params->sigmoid_params->slope > 20.0f)
                     return set_error(clip, "libplacebo_Resample: sigmoid_slope must be between 1.0 and 20.0.", params->vf);
             }
@@ -409,7 +440,8 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     if (params->sample_params->antiring < 0.0f || params->sample_params->antiring > 1.0f)
         return set_error(clip, "libplacebo_Resample: antiring must be between 0.0 and 1.0.", params->vf);
 
-    const pl_filter_config* filter_config{ pl_find_filter_config((avs_defined(avs_array_elt(args, Filter))) ? avs_as_string(avs_array_elt(args, Filter)) : "ewa_lanczos", PL_FILTER_UPSCALING) };
+    const pl_filter_config* filter_config{pl_find_filter_config(
+        (avs_defined(avs_array_elt(args, Filter))) ? avs_as_string(avs_array_elt(args, Filter)) : "ewa_lanczos", PL_FILTER_UPSCALING)};
     if (!filter_config)
         return set_error(clip, "libplacebo_Resample: not a valid filter.", params->vf);
 
@@ -447,7 +479,8 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
         params->subw = (1 << avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U));
         params->subh = (1 << avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U));
 
-        params->shift_w = (params->cplace == 0 || params->cplace == 2) ? (0.5f * (1.0f - static_cast<float>(w) / fi->vi.width)) / params->subw : 0.0f;
+        params->shift_w =
+            (params->cplace == 0 || params->cplace == 2) ? (0.5f * (1.0f - static_cast<float>(w) / fi->vi.width)) / params->subw : 0.0f;
         params->shift_h = (params->cplace == 2) ? (0.5f * (1.0f - static_cast<float>(h) / fi->vi.height)) / params->subh : 0.0f;
     }
     else
@@ -478,12 +511,18 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 
     switch (bits)
     {
-        case 8: params->resample_process = resample_filter<uint8_t>; break;
-        case 16: params->resample_process = resample_filter<uint16_t>; break;
-        default:params->resample_process = resample_filter<float>; break;
+    case 8:
+        params->resample_process = resample_filter<uint8_t>;
+        break;
+    case 16:
+        params->resample_process = resample_filter<uint16_t>;
+        break;
+    default:
+        params->resample_process = resample_filter<float>;
+        break;
     }
 
-    AVS_Value v{ avs_new_value_clip(clip) };
+    AVS_Value v{avs_new_value_clip(clip)};
 
     fi->user_data = reinterpret_cast<void*>(params);
     fi->get_frame = resample_get_frame;

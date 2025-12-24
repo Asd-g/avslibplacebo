@@ -20,7 +20,8 @@ std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device,
 void avs_libplacebo_uninit(const std::unique_ptr<struct priv>& p);
 
 [[maybe_unused]]
-AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst, std::string& msg, const std::string& name, const int device, const int list_device);
+AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst,
+    std::string& msg, const std::string& name, const int device, const int list_device);
 AVS_Value avs_version(std::string& msg, const std::string& name, AVS_ScriptEnvironment* env);
 [[maybe_unused]]
 AVS_Value set_error(AVS_Clip* clip, const char* error_message, const std::unique_ptr<struct priv>& p);
