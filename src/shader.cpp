@@ -107,10 +107,10 @@ static int shader_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, shader* d, co
         pl.type = PL_FMT_UNORM;
         pl.pixel_stride = 2;
         pl.component_size[0] = 16;
-        pl.width = avs_get_row_size_p(src, plane) / avs_component_size(&fi->vi);
-        pl.height = avs_get_height_p(src, plane);
-        pl.row_stride = avs_get_pitch_p(src, plane);
-        pl.pixels = avs_get_read_ptr_p(src, plane);
+        pl.width = g_avs_api->avs_get_row_size_p(src, plane) / g_avs_api->avs_component_size(&fi->vi);
+        pl.height = g_avs_api->avs_get_height_p(src, plane);
+        pl.row_stride = g_avs_api->avs_get_pitch_p(src, plane);
+        pl.pixels = g_avs_api->avs_get_read_ptr_p(src, plane);
         pl.component_map[0] = i;
 
         // Upload planes
@@ -125,8 +125,8 @@ static int shader_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, shader* d, co
     if (!shader_do_plane(d, pl_planes))
         return error;
 
-    const int dst_stride =
-        (avs_get_pitch(dst) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) & ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
+    const int dst_stride = (g_avs_api->avs_get_pitch_p(dst, AVS_DEFAULT_PLANE) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) &
+                           ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
     pl_buf_params buf_params{};
     buf_params.size = dst_stride * fi->vi.height;
     buf_params.host_mapped = true;
@@ -154,7 +154,7 @@ static int shader_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, shader* d, co
 
         while (pl_buf_poll(d->vf->gpu, dst_buf, 0))
             ;
-        memcpy(avs_get_write_ptr_p(dst, planes[i]), dst_buf->data, dst_buf->params.size);
+        memcpy(g_avs_api->avs_get_write_ptr_p(dst, planes[i]), dst_buf->data, dst_buf->params.size);
     }
 
     pl_buf_destroy(d->vf->gpu, &dst_buf);
@@ -166,18 +166,20 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
 {
     shader* d{reinterpret_cast<shader*>(fi->user_data)};
 
-    AVS_VideoFrame* src{avs_get_frame(fi->child, n)};
+    avs_helpers::avs_video_frame_ptr src_ptr{g_avs_api->avs_get_frame(fi->child, n)};
+    AVS_VideoFrame* src{src_ptr.get()};
     if (!src)
         return nullptr;
 
-    AVS_VideoFrame* dst{avs_new_video_frame_p(fi->env, &fi->vi, src)};
+    avs_helpers::avs_video_frame_ptr dst_ptr{g_avs_api->avs_new_video_frame_p(fi->env, &fi->vi, src)};
+    AVS_VideoFrame* dst{dst_ptr.get()};
 
     if (d->range == PL_COLOR_LEVELS_UNKNOWN)
     {
-        const AVS_Map* props{avs_get_frame_props_ro(fi->env, src)};
+        const AVS_Map* props{g_avs_api->avs_get_frame_props_ro(fi->env, src)};
 
         int err{0};
-        const int64_t r{avs_prop_get_int(fi->env, props, "_ColorRange", 0, &err)};
+        const int64_t r{g_avs_api->avs_prop_get_int(fi->env, props, "_ColorRange", 0, &err)};
         if (err)
             d->range = PL_COLOR_LEVELS_LIMITED;
         else
@@ -187,19 +189,13 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
     if (std::lock_guard<std::mutex> lck(mtx); shader_filter(dst, src, d, fi))
     {
         d->msg = "libplacebo_Shader: " + d->vf->log_buffer.str();
-        avs_release_video_frame(src);
-        avs_release_video_frame(dst);
 
         fi->error = d->msg.c_str();
 
         return nullptr;
     }
     else
-    {
-        avs_release_video_frame(src);
-
-        return dst;
-    }
+        return dst_ptr.release();
 }
 
 static void AVSC_CC free_shader(AVS_FilterInfo* fi)
@@ -245,20 +241,21 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     };
 
     AVS_FilterInfo* fi;
-    AVS_Clip* clip{avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1)};
+    avs_helpers::avs_clip_ptr clip_ptr{g_avs_api->avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1)};
+    AVS_Clip* clip{clip_ptr.get()};
 
-    shader* params{new shader()};
+    std::unique_ptr<shader> params{std::make_unique<shader>()};
 
     AVS_Value avs_ver{avs_version(params->msg, "libplacebo_Shader", env)};
     if (avs_is_error(avs_ver))
         return avs_ver;
 
     if (!avs_is_planar(&fi->vi))
-        return set_error(clip, "libplacebo_Shader: clip must be in planar format.", nullptr);
-    if (avs_bits_per_component(&fi->vi) != 16)
-        return set_error(clip, "libplacebo_Shader: bit depth must be 16-bit.", nullptr);
+        return set_error("libplacebo_Shader: clip must be in planar format.", nullptr);
+    if (g_avs_api->avs_bits_per_component(&fi->vi) != 16)
+        return set_error("libplacebo_Shader: bit depth must be 16-bit.", nullptr);
     if (avs_is_rgb(&fi->vi))
-        return set_error(clip, "libplacebo_Shader: only YUV formats are supported.", nullptr);
+        return set_error("libplacebo_Shader: only YUV formats are supported.", nullptr);
 
     const int device{avs_defined(avs_array_elt(args, Device)) ? avs_as_int(avs_array_elt(args, Device)) : -1};
     const int list_device{avs_defined(avs_array_elt(args, List_device)) ? avs_as_bool(avs_array_elt(args, List_device)) : 0};
@@ -270,7 +267,12 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
         AVS_Value dev_info{devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Shader", device, list_device)};
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
+        {
+            fi->user_data = params.release();
+            fi->free_filter = free_shader;
+
             return dev_info;
+        }
 
         params->vf = avs_libplacebo_init(devices[device], params->msg);
 
@@ -279,7 +281,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     else
     {
         if (device < -1)
-            return set_error(clip, "libplacebo_Shader: device must be greater than or equal to -1.", nullptr);
+            return set_error("libplacebo_Shader: device must be greater than or equal to -1.", nullptr);
 
         params->vf = avs_libplacebo_init(nullptr, params->msg);
     }
@@ -287,7 +289,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (params->msg.size())
     {
         params->msg = "libplacebo_Shader: " + params->msg;
-        return set_error(clip, params->msg.c_str(), nullptr);
+        return set_error(params->msg.c_str(), nullptr);
     }
 
     const char* shader_path{avs_as_string(avs_array_elt(args, Shader))};
@@ -311,14 +313,14 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (!shader_file)
     {
         params->msg = "libplacebo_Shader: error opening file " + std::string(shader_path) + " (" + std::strerror(errno) + ")";
-        return set_error(clip, params->msg.c_str(), params->vf);
+        return set_error(params->msg.c_str(), params->vf);
     }
 
     if (std::fseek(shader_file, 0, SEEK_END))
     {
         std::fclose(shader_file);
         params->msg = "libplacebo_Shader: error seeking to the end of file " + std::string(shader_path) + " (" + std::strerror(errno) + ")";
-        return set_error(clip, params->msg.c_str(), params->vf);
+        return set_error(params->msg.c_str(), params->vf);
     }
 
     const long shader_size{std::ftell(shader_file)};
@@ -328,7 +330,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
         std::fclose(shader_file);
         params->msg =
             "libplacebo_Shader: error determining the size of file " + std::string(shader_path) + " (" + std::strerror(errno) + ")";
-        return set_error(clip, params->msg.c_str(), params->vf);
+        return set_error(params->msg.c_str(), params->vf);
     }
 
     std::rewind(shader_file);
@@ -353,7 +355,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
                 ++num_equals;
         }
         if (num_spaces != num_equals)
-            return set_error(clip, "libplacebo_Shader: failed parsing shader_param (wrong format).", params->vf);
+            return set_error("libplacebo_Shader: failed parsing shader_param (wrong format).", params->vf);
 
         std::string reg_parse{"(\\w+)=([^ >]+)"};
         for (int i{0}; i < num_spaces; ++i)
@@ -362,7 +364,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
         std::regex reg(reg_parse);
         std::smatch match;
         if (!std::regex_match(shader_p.cbegin(), shader_p.cend(), match, reg))
-            return set_error(clip, "libplacebo_Shader: regex failed parsing shader_param.", params->vf);
+            return set_error("libplacebo_Shader: regex failed parsing shader_param.", params->vf);
 
         for (int i = 1; match[i + 1].matched; i += 2)
             bdata =
@@ -372,7 +374,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
 
     params->shader = pl_mpv_user_shader_parse(params->vf->gpu, bdata.c_str(), bdata.size());
     if (!params->shader)
-        return set_error(clip, "libplacebo_Shader: failed parsing shader!", params->vf);
+        return set_error("libplacebo_Shader: failed parsing shader!", params->vf);
 
     params->range = PL_COLOR_LEVELS_UNKNOWN;
     params->matrix = static_cast<pl_color_system>((avs_defined(avs_array_elt(args, Matrix))) ? avs_as_int(avs_array_elt(args, Matrix)) : 2);
@@ -397,7 +399,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
         if (params->sigmoid_params->center < 0.0f || params->sigmoid_params->center > 1.0f)
         {
             pl_mpv_user_shader_destroy(&params->shader);
-            return set_error(clip, "libplacebo_Shader: sigmoid_center must be between 0.0 and 1.0.", params->vf);
+            return set_error("libplacebo_Shader: sigmoid_center must be between 0.0 and 1.0.", params->vf);
         }
 
         params->sigmoid_params->slope =
@@ -405,7 +407,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
         if (params->sigmoid_params->slope < 1.0f || params->sigmoid_params->slope > 20.0f)
         {
             pl_mpv_user_shader_destroy(&params->shader);
-            return set_error(clip, "libplacebo_Shader: sigmoid_slope must be between 1.0 and 20.0.", params->vf);
+            return set_error("libplacebo_Shader: sigmoid_slope must be between 1.0 and 20.0.", params->vf);
         }
     }
 
@@ -415,7 +417,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (params->sample_params->antiring < 0.0f || params->sample_params->antiring > 1.0f)
     {
         pl_mpv_user_shader_destroy(&params->shader);
-        return set_error(clip, "libplacebo_Shader: antiring must be between 0.0 and 1.0.", params->vf);
+        return set_error("libplacebo_Shader: antiring must be between 0.0 and 1.0.", params->vf);
     }
 
     const pl_filter_config* filter_config{pl_find_filter_config(
@@ -423,7 +425,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (!filter_config)
     {
         pl_mpv_user_shader_destroy(&params->shader);
-        return set_error(clip, "libplacebo_Shader: not a valid filter.", params->vf);
+        return set_error("libplacebo_Shader: not a valid filter.", params->vf);
     }
 
     params->sample_params->filter = *filter_config;
@@ -431,21 +433,21 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (params->sample_params->filter.clamp < 0.0f || params->sample_params->filter.clamp > 1.0f)
     {
         pl_mpv_user_shader_destroy(&params->shader);
-        return set_error(clip, "libplacebo_Shader: clamp must be between 0.0 and 1.0.", params->vf);
+        return set_error("libplacebo_Shader: clamp must be between 0.0 and 1.0.", params->vf);
     }
 
     params->sample_params->filter.blur = (avs_defined(avs_array_elt(args, Blur))) ? avs_as_float(avs_array_elt(args, Blur)) : 0.0f;
     if (params->sample_params->filter.blur < 0.0f || params->sample_params->filter.blur > 100.0f)
     {
         pl_mpv_user_shader_destroy(&params->shader);
-        return set_error(clip, "libplacebo_Shader: blur must be between 0.0 and 100.0.", params->vf);
+        return set_error("libplacebo_Shader: blur must be between 0.0 and 100.0.", params->vf);
     }
 
     params->sample_params->filter.taper = (avs_defined(avs_array_elt(args, Taper))) ? avs_as_float(avs_array_elt(args, Taper)) : 0.0f;
     if (params->sample_params->filter.taper < 0.0f || params->sample_params->filter.taper > 1.0f)
     {
         pl_mpv_user_shader_destroy(&params->shader);
-        return set_error(clip, "libplacebo_Shader: taper must be between 0.0 and 1.0.", params->vf);
+        return set_error("libplacebo_Shader: taper must be between 0.0 and 1.0.", params->vf);
     }
 
     if (avs_defined(avs_array_elt(args, Radius)))
@@ -454,7 +456,7 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
         if (params->sample_params->filter.radius < 0.0f || params->sample_params->filter.radius > 16.0f)
         {
             pl_mpv_user_shader_destroy(&params->shader);
-            return set_error(clip, "libplacebo_Shader: radius must be between 0.0 and 16.0.", params->vf);
+            return set_error("libplacebo_Shader: radius must be between 0.0 and 16.0.", params->vf);
         }
     }
 
@@ -463,19 +465,18 @@ AVS_Value AVSC_CC create_shader(AVS_ScriptEnvironment* env, AVS_Value args, void
     if (avs_defined(avs_array_elt(args, Param2)))
         params->sample_params->filter.params[1] = avs_as_float(avs_array_elt(args, Param2));
 
-    params->subw = avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U);
-    params->subh = avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U);
+    params->subw = g_avs_api->avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U);
+    params->subh = g_avs_api->avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U);
 
     fi->vi.pixel_type = AVS_CS_YUV444P16;
 
-    AVS_Value v{avs_new_value_clip(clip)};
+    AVS_Value v;
+    g_avs_api->avs_set_to_clip(&v, clip);
 
-    fi->user_data = reinterpret_cast<void*>(params);
+    fi->user_data = params.release();
     fi->get_frame = shader_get_frame;
     fi->set_cache_hints = shader_set_cache_hints;
     fi->free_filter = free_shader;
-
-    avs_release_clip(clip);
 
     return v;
 }

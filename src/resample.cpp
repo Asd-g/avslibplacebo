@@ -185,14 +185,14 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
     constexpr int planes_y[4]{AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V, AVS_PLANAR_A};
     constexpr int planes_r[4]{AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B, AVS_PLANAR_A};
     const int* planes{(avs_is_rgb(&fi->vi)) ? planes_r : planes_y};
-    const int num_planes{avs_num_components(&fi->vi)};
+    const int num_planes{g_avs_api->avs_num_components(&fi->vi)};
 
     for (int i{0}; i < num_planes; ++i)
     {
         const int plane{planes[i]};
 
-        const size_t dst_width{avs_get_row_size_p(dst, plane) / sizeof(T)};
-        const int dst_height = avs_get_height_p(dst, plane);
+        const size_t dst_width{g_avs_api->avs_get_row_size_p(dst, plane) / sizeof(T)};
+        const int dst_height{g_avs_api->avs_get_height_p(dst, plane)};
 
         pl_plane_data pl{};
         pl.pixel_stride = sizeof(T);
@@ -211,10 +211,10 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
             pl.type = PL_FMT_FLOAT;
             pl.component_size[0] = 32;
         }
-        pl.width = avs_get_row_size_p(src, plane) / sizeof(T);
-        pl.height = avs_get_height_p(src, plane);
-        pl.row_stride = avs_get_pitch_p(src, plane);
-        pl.pixels = avs_get_read_ptr_p(src, plane);
+        pl.width = g_avs_api->avs_get_row_size_p(src, plane) / sizeof(T);
+        pl.height = g_avs_api->avs_get_height_p(src, plane);
+        pl.row_stride = g_avs_api->avs_get_pitch_p(src, plane);
+        pl.pixels = g_avs_api->avs_get_read_ptr_p(src, plane);
 
         std::lock_guard<std::mutex> lck(mtx);
 
@@ -242,7 +242,7 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
                 (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y, plane))
             return error(lut);
 
-        const size_t dst_stride{(avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) &
+        const size_t dst_stride{(g_avs_api->avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) &
                                 ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1)};
         pl_buf_params buf_params{};
         buf_params.size = dst_stride * t_r.h;
@@ -270,7 +270,7 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
 
         while (pl_buf_poll(d->vf->gpu, dst_buf, 0))
             ;
-        memcpy(avs_get_write_ptr_p(dst, plane), dst_buf->data, dst_buf->params.size);
+        memcpy(g_avs_api->avs_get_write_ptr_p(dst, plane), dst_buf->data, dst_buf->params.size);
         pl_buf_destroy(d->vf->gpu, &dst_buf);
     }
 
@@ -281,17 +281,17 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
 {
     resample* d{reinterpret_cast<resample*>(fi->user_data)};
 
-    AVS_VideoFrame* src{avs_get_frame(fi->child, n)};
+    avs_helpers::avs_video_frame_ptr src_ptr{g_avs_api->avs_get_frame(fi->child, n)};
+    AVS_VideoFrame* src{ src_ptr.get() };
     if (!src)
         return nullptr;
 
-    AVS_VideoFrame* dst{avs_new_video_frame_p(fi->env, &fi->vi, src)};
+    avs_helpers::avs_video_frame_ptr dst_ptr{g_avs_api->avs_new_video_frame_p(fi->env, &fi->vi, src)};
+    AVS_VideoFrame* dst{dst_ptr.get()};
 
     if (d->resample_process(dst, src, d, fi))
     {
         d->msg = "libplacebo_Resample: " + d->vf->log_buffer.str();
-        avs_release_video_frame(src);
-        avs_release_video_frame(dst);
 
         fi->error = d->msg.c_str();
 
@@ -299,11 +299,9 @@ static AVS_VideoFrame* AVSC_CC resample_get_frame(AVS_FilterInfo* fi, int n)
     }
     else
     {
-        avs_prop_set_int(fi->env, avs_get_frame_props_rw(fi->env, dst), "_ChromaLocation", d->cplace, 0);
+        g_avs_api->avs_prop_set_int(fi->env, g_avs_api->avs_get_frame_props_rw(fi->env, dst), "_ChromaLocation", d->cplace, 0);
 
-        avs_release_video_frame(src);
-
-        return dst;
+        return dst_ptr.release();
     }
 }
 
@@ -350,20 +348,21 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     };
 
     AVS_FilterInfo* fi;
-    AVS_Clip* clip{avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1)};
+    avs_helpers::avs_clip_ptr clip_ptr{g_avs_api->avs_new_c_filter(env, &fi, avs_array_elt(args, Clip), 1)};
+    AVS_Clip* clip{clip_ptr.get()};
 
-    resample* params{new resample()};
+    std::unique_ptr<resample> params{std::make_unique<resample>()};
 
     AVS_Value avs_ver{avs_version(params->msg, "libplacebo_Resample", env)};
     if (avs_is_error(avs_ver))
         return avs_ver;
 
-    const int bits{avs_bits_per_component(&fi->vi)};
+    const int bits{g_avs_api->avs_bits_per_component(&fi->vi)};
 
     if (!avs_is_planar(&fi->vi))
-        return set_error(clip, "libplacebo_Resample: clip must be in planar format.", nullptr);
+        return set_error("libplacebo_Resample: clip must be in planar format.", nullptr);
     if (bits != 8 && bits != 16 && bits != 32)
-        return set_error(clip, "libplacebo_Resample: bit depth must be 8, 16 or 32-bit.", nullptr);
+        return set_error("libplacebo_Resample: bit depth must be 8, 16 or 32-bit.", nullptr);
 
     const int w{fi->vi.width};
     const int h{fi->vi.height};
@@ -378,7 +377,12 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
 
         AVS_Value dev_info{devices_info(clip, fi->env, devices, inst, params->msg, "libplacebo_Resample", device, list_device)};
         if (avs_is_error(dev_info) || avs_is_clip(dev_info))
+        {
+            fi->user_data = params.release();
+            fi->free_filter = free_resample;
+
             return dev_info;
+        }
 
         params->vf = avs_libplacebo_init(devices[device], params->msg);
 
@@ -387,7 +391,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     else
     {
         if (device < -1)
-            return set_error(clip, "libplacebo_Resample: device must be greater than or equal to -1.", nullptr);
+            return set_error("libplacebo_Resample: device must be greater than or equal to -1.", nullptr);
 
         params->vf = avs_libplacebo_init(nullptr, params->msg);
     }
@@ -395,7 +399,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     if (params->msg.size())
     {
         params->msg = "libplacebo_Resample: " + params->msg;
-        return set_error(clip, params->msg.c_str(), nullptr);
+        return set_error(params->msg.c_str(), nullptr);
     }
 
     fi->vi.width = avs_as_int(avs_array_elt(args, Width));
@@ -421,12 +425,12 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
                 params->sigmoid_params->center =
                     (avs_defined(avs_array_elt(args, Sigmoid_center))) ? avs_as_float(avs_array_elt(args, Sigmoid_center)) : 0.75f;
                 if (params->sigmoid_params->center < 0.0f || params->sigmoid_params->center > 1.0f)
-                    return set_error(clip, "libplacebo_Resample: sigmoid_center must be between 0.0 and 1.0.", params->vf);
+                    return set_error("libplacebo_Resample: sigmoid_center must be between 0.0 and 1.0.", params->vf);
 
                 params->sigmoid_params->slope =
                     (avs_defined(avs_array_elt(args, Sigmoid_slope))) ? avs_as_float(avs_array_elt(args, Sigmoid_slope)) : 6.5f;
                 if (params->sigmoid_params->slope < 1.0f || params->sigmoid_params->slope > 20.0f)
-                    return set_error(clip, "libplacebo_Resample: sigmoid_slope must be between 1.0 and 20.0.", params->vf);
+                    return set_error("libplacebo_Resample: sigmoid_slope must be between 1.0 and 20.0.", params->vf);
             }
         }
     }
@@ -438,31 +442,31 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     params->sample_params->no_compute = false;
     params->sample_params->antiring = (avs_defined(avs_array_elt(args, Antiring))) ? avs_as_float(avs_array_elt(args, Antiring)) : 0.0f;
     if (params->sample_params->antiring < 0.0f || params->sample_params->antiring > 1.0f)
-        return set_error(clip, "libplacebo_Resample: antiring must be between 0.0 and 1.0.", params->vf);
+        return set_error("libplacebo_Resample: antiring must be between 0.0 and 1.0.", params->vf);
 
     const pl_filter_config* filter_config{pl_find_filter_config(
         (avs_defined(avs_array_elt(args, Filter))) ? avs_as_string(avs_array_elt(args, Filter)) : "ewa_lanczos", PL_FILTER_UPSCALING)};
     if (!filter_config)
-        return set_error(clip, "libplacebo_Resample: not a valid filter.", params->vf);
+        return set_error("libplacebo_Resample: not a valid filter.", params->vf);
 
     params->sample_params->filter = *filter_config;
     params->sample_params->filter.clamp = (avs_defined(avs_array_elt(args, Clamp))) ? avs_as_float(avs_array_elt(args, Clamp)) : 0.0f;
     if (params->sample_params->filter.clamp < 0.0f || params->sample_params->filter.clamp > 1.0f)
-        return set_error(clip, "libplacebo_Resample: clamp must be between 0.0 and 1.0.", params->vf);
+        return set_error("libplacebo_Resample: clamp must be between 0.0 and 1.0.", params->vf);
 
     params->sample_params->filter.blur = (avs_defined(avs_array_elt(args, Blur))) ? avs_as_float(avs_array_elt(args, Blur)) : 0.0f;
     if (params->sample_params->filter.blur < 0.0f || params->sample_params->filter.blur > 100.0f)
-        return set_error(clip, "libplacebo_Resample: blur must be between 0.0 and 100.0.", params->vf);
+        return set_error("libplacebo_Resample: blur must be between 0.0 and 100.0.", params->vf);
 
     params->sample_params->filter.taper = (avs_defined(avs_array_elt(args, Taper))) ? avs_as_float(avs_array_elt(args, Taper)) : 0.0f;
     if (params->sample_params->filter.taper < 0.0f || params->sample_params->filter.taper > 1.0f)
-        return set_error(clip, "libplacebo_Resample: taper must be between 0.0 and 1.0.", params->vf);
+        return set_error("libplacebo_Resample: taper must be between 0.0 and 1.0.", params->vf);
 
     if (avs_defined(avs_array_elt(args, Radius)))
     {
         params->sample_params->filter.radius = avs_as_float(avs_array_elt(args, Radius));
         if (params->sample_params->filter.radius < 0.0f || params->sample_params->filter.radius > 16.0f)
-            return set_error(clip, "libplacebo_Resample: radius must be between 0.0 and 16.0.", params->vf);
+            return set_error("libplacebo_Resample: radius must be between 0.0 and 16.0.", params->vf);
     }
 
     if (avs_defined(avs_array_elt(args, Param1)))
@@ -470,14 +474,14 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     if (avs_defined(avs_array_elt(args, Param2)))
         params->sample_params->filter.params[1] = avs_as_float(avs_array_elt(args, Param2));
 
-    if (avs_is_420(&fi->vi) || avs_is_422(&fi->vi))
+    if (g_avs_api->avs_is_420(&fi->vi) || g_avs_api->avs_is_422(&fi->vi))
     {
         params->cplace = (avs_defined(avs_array_elt(args, Cplace))) ? avs_as_int(avs_array_elt(args, Cplace)) : 0;
         if (params->cplace < 0 || params->cplace > 2)
-            return set_error(clip, "libplacebo_Resample: cplace must be between 0 and 2.", params->vf);
+            return set_error("libplacebo_Resample: cplace must be between 0 and 2.", params->vf);
 
-        params->subw = (1 << avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U));
-        params->subh = (1 << avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U));
+        params->subw = (1 << g_avs_api->avs_get_plane_width_subsampling(&fi->vi, AVS_PLANAR_U));
+        params->subh = (1 << g_avs_api->avs_get_plane_height_subsampling(&fi->vi, AVS_PLANAR_U));
 
         params->shift_w =
             (params->cplace == 0 || params->cplace == 2) ? (0.5f * (1.0f - static_cast<float>(w) / fi->vi.width)) / params->subw : 0.0f;
@@ -495,7 +499,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     {
         params->src_width = avs_as_float(avs_array_elt(args, Src_width));
         if (params->src_width <= 0.0f)
-            return set_error(clip, "libplacebo_Resample: src_width must be greater than 0.0.", params->vf);
+            return set_error("libplacebo_Resample: src_width must be greater than 0.0.", params->vf);
     }
     else
         params->src_width = -1.0f;
@@ -504,7 +508,7 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
     {
         params->src_height = avs_as_float(avs_array_elt(args, Src_height));
         if (params->src_height <= 0.0f)
-            return set_error(clip, "libplacebo_Resample: src_height must be greater than 0.0.", params->vf);
+            return set_error("libplacebo_Resample: src_height must be greater than 0.0.", params->vf);
     }
     else
         params->src_height = -1.0f;
@@ -522,14 +526,13 @@ AVS_Value AVSC_CC create_resample(AVS_ScriptEnvironment* env, AVS_Value args, vo
         break;
     }
 
-    AVS_Value v{avs_new_value_clip(clip)};
+    AVS_Value v;
+    g_avs_api->avs_set_to_clip(&v, clip);
 
-    fi->user_data = reinterpret_cast<void*>(params);
+    fi->user_data = params.release();
     fi->get_frame = resample_get_frame;
     fi->set_cache_hints = resample_set_cache_hints;
     fi->free_filter = free_resample;
-
-    avs_release_clip(clip);
 
     return v;
 }

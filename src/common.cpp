@@ -85,7 +85,6 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
     if (vkCreateInstance(&info, nullptr, &inst))
     {
         vkDestroyInstance(inst, nullptr);
-        avs_release_clip(clip);
 
         msg = name + ": failed to create instance.";
         return avs_new_value_error(msg.c_str());
@@ -94,7 +93,6 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
     if (vkEnumeratePhysicalDevices(inst, &dev_count, nullptr))
     {
         vkDestroyInstance(inst, nullptr);
-        avs_release_clip(clip);
 
         msg = name + ": failed to get devices number.";
         return avs_new_value_error(msg.c_str());
@@ -103,7 +101,6 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
     if (device < -1 || device > static_cast<int>(dev_count) - 1)
     {
         vkDestroyInstance(inst, nullptr);
-        avs_release_clip(clip);
 
         msg = name + ": device must be between -1 and " + std::to_string(dev_count - 1);
         return avs_new_value_error(msg.c_str());
@@ -114,7 +111,6 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
     if (vkEnumeratePhysicalDevices(inst, &dev_count, devices.data()))
     {
         vkDestroyInstance(inst, nullptr);
-        avs_release_clip(clip);
 
         msg = name + ": failed to get devices.";
         return avs_new_value_error(msg.c_str());
@@ -132,12 +128,11 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
 
         vkDestroyInstance(inst, nullptr);
 
-        AVS_Value cl{avs_new_value_clip(clip)};
-        AVS_Value args_[2]{cl, avs_new_value_string(msg.c_str())};
-        AVS_Value inv{avs_invoke(env, "Text", avs_new_value_array(args_, 2), 0)};
-
-        avs_release_value(cl);
-        avs_release_clip(clip);
+        AVS_Value cl;
+        g_avs_api->avs_set_to_clip(&cl, clip);
+        avs_helpers::avs_value_guard cl_guard(cl);
+        AVS_Value args_[2]{cl_guard.get(), avs_new_value_string(msg.c_str())};
+        AVS_Value inv{g_avs_api->avs_invoke(env, "Text", avs_new_value_array(args_, 2), 0)};
 
         return inv;
     }
@@ -147,11 +142,11 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
 
 AVS_Value avs_version(std::string& msg, const std::string& name, AVS_ScriptEnvironment* env)
 {
-    if (!avs_check_version(env, 9))
+    if (!g_avs_api->avs_check_version(env, 9))
     {
-        if (avs_check_version(env, 10))
+        if (g_avs_api->avs_check_version(env, 10))
         {
-            if (avs_get_env_property(env, AVS_AEP_INTERFACE_BUGFIX) < 2)
+            if (g_avs_api->avs_get_env_property(env, AVS_AEP_INTERFACE_BUGFIX) < 2)
             {
                 msg = name + ": AviSynth+ version must be r3688 or later.";
                 return avs_new_value_error(msg.c_str());
@@ -167,10 +162,8 @@ AVS_Value avs_version(std::string& msg, const std::string& name, AVS_ScriptEnvir
     return avs_void;
 }
 
-AVS_Value set_error(AVS_Clip* clip, const char* error_message, const std::unique_ptr<struct priv>& p)
+AVS_Value set_error(const char* error_message, const std::unique_ptr<struct priv>& p)
 {
-    avs_release_clip(clip);
-
     if (p)
         avs_libplacebo_uninit(p);
 
