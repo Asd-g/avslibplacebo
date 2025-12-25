@@ -77,19 +77,32 @@ void avs_libplacebo_uninit(const std::unique_ptr<struct priv>& p)
 AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<VkPhysicalDevice>& devices, VkInstance& inst,
     std::string& msg, const std::string& name, const int device, const int list_device)
 {
+    constexpr uint32_t min_vk_ver{PL_VK_MIN_VERSION};
+
+    VkApplicationInfo app_info{};
+    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app_info.apiVersion = min_vk_ver;
+
     VkInstanceCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 
-    uint32_t dev_count{0};
+    uint32_t instance_version = VK_API_VERSION_1_0;
+    if (vkEnumerateInstanceVersion)
+        vkEnumerateInstanceVersion(&instance_version);
+
+    if (instance_version < min_vk_ver)
+    {
+        msg = name + ": Vulkan instance version too low (needs 1.2+). Update drivers/runtime.";
+        return avs_new_value_error(msg.c_str());
+    }
 
     if (vkCreateInstance(&info, nullptr, &inst))
     {
-        vkDestroyInstance(inst, nullptr);
-
         msg = name + ": failed to create instance.";
         return avs_new_value_error(msg.c_str());
     }
 
+    uint32_t dev_count{0};
     if (vkEnumeratePhysicalDevices(inst, &dev_count, nullptr))
     {
         vkDestroyInstance(inst, nullptr);
@@ -107,7 +120,6 @@ AVS_Value devices_info(AVS_Clip* clip, AVS_ScriptEnvironment* env, std::vector<V
     }
 
     devices.resize(dev_count);
-
     if (vkEnumeratePhysicalDevices(inst, &dev_count, devices.data()))
     {
         vkDestroyInstance(inst, nullptr);
