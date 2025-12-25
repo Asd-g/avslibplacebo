@@ -869,8 +869,13 @@ Steps:
         ninja -C build install
 
     Building plugin:
+        # Options:
+        # - USE_SYSTEM_AVS_HELPER: Use an installed version of avs_c_api_loader, default OFF
+        # - USE_STATIC_LIBPLACEBO: Link libplacebo statically, default ON
+        # - USE_STATIC_DOVI: Link dovi statically, default ON
+        # - USE_STATIC_SHADERC: Link shaderc statically (shaderc_combined) instead of shared, default ON
         cd ../
-        cmake -B build -G Ninja -DCMAKE_PREFIX_PATH="c:\VulkanSDK\1.3.283.0;%prefix%" (Windows)
+        cmake -B build -G Ninja -DCMAKE_PREFIX_PATH=%prefix% (Windows)
         cmake -B build -G Ninja -DCMAKE_PREFIX_PATH=$prefix (Linux)
         ninja -C build
 ```
