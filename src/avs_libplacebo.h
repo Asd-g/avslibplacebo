@@ -39,6 +39,10 @@ struct priv
     pl_tex tex_out[3];
 
     std::ostringstream log_buffer;
+
+    pl_tex sample_fbo;
+    pl_tex sep_fbo;
+    pl_shader_obj lut;
 };
 
 AVS_Value AVSC_CC create_deband(AVS_ScriptEnvironment* env, AVS_Value args, void* param);

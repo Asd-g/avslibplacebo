@@ -8,10 +8,9 @@
 
 #include "avs_libplacebo.h"
 
-static std::mutex mtx;
-
 struct shader
 {
+    std::mutex mtx;
     std::unique_ptr<priv> vf;
     const pl_hook* shader;
     enum pl_color_system matrix;
@@ -75,19 +74,9 @@ static bool shader_do_plane(const shader* d, const pl_plane* planes) noexcept
 
 static int shader_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, shader* d, const AVS_FilterInfo* fi) noexcept
 {
-    const int error{[&]() {
-        for (int i{0}; i < 3; ++i)
-        {
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[i]);
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[i]);
-        }
-
-        return -1;
-    }()};
-
     const pl_fmt fmt{pl_find_named_fmt(d->vf->gpu, "r16")};
     if (!fmt)
-        return error;
+        return -1;
 
     pl_tex_params t_r{};
     t_r.w = fi->vi.width;
@@ -98,6 +87,8 @@ static int shader_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, shader* d, co
 
     pl_plane pl_planes[3]{};
     constexpr int planes[3]{AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V};
+
+    std::lock_guard<std::mutex> lck(d->mtx);
 
     for (int i{0}; i < 3; ++i)
     {
@@ -115,49 +106,27 @@ static int shader_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, shader* d, co
 
         // Upload planes
         if (!pl_upload_plane(d->vf->gpu, &pl_planes[i], &d->vf->tex_in[i], &pl))
-            return error;
+            return -1;
 
         if (!pl_tex_recreate(d->vf->gpu, &d->vf->tex_out[i], &t_r))
-            return error;
+            return -1;
     }
 
     // Process plane
     if (!shader_do_plane(d, pl_planes))
-        return error;
-
-    const int dst_stride = (g_avs_api->avs_get_pitch_p(dst, AVS_DEFAULT_PLANE) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) &
-                           ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1);
-    pl_buf_params buf_params{};
-    buf_params.size = dst_stride * fi->vi.height;
-    buf_params.host_mapped = true;
-
-    pl_buf dst_buf{};
-    if (!pl_buf_recreate(d->vf->gpu, &dst_buf, &buf_params))
-        return error;
+        return -1;
 
     // Download planes
     for (int i{0}; i < 3; ++i)
     {
         pl_tex_transfer_params ttr1{};
-        ttr1.row_pitch = dst_stride;
-        ttr1.buf = dst_buf;
         ttr1.tex = d->vf->tex_out[i];
+        ttr1.row_pitch = g_avs_api->avs_get_pitch_p(dst, planes[i]);
+        ttr1.ptr = g_avs_api->avs_get_write_ptr_p(dst, planes[i]);
 
         if (!pl_tex_download(d->vf->gpu, &ttr1))
-        {
-            pl_buf_destroy(d->vf->gpu, &dst_buf);
-            return error;
-        }
-
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[i]);
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[i]);
-
-        while (pl_buf_poll(d->vf->gpu, dst_buf, 0))
-            ;
-        memcpy(g_avs_api->avs_get_write_ptr_p(dst, planes[i]), dst_buf->data, dst_buf->params.size);
+            return -1;
     }
-
-    pl_buf_destroy(d->vf->gpu, &dst_buf);
 
     return 0;
 }
@@ -186,7 +155,7 @@ static AVS_VideoFrame* AVSC_CC shader_get_frame(AVS_FilterInfo* fi, int n)
             d->range = (r) ? PL_COLOR_LEVELS_LIMITED : PL_COLOR_LEVELS_FULL;
     }
 
-    if (std::lock_guard<std::mutex> lck(mtx); shader_filter(dst, src, d, fi))
+    if (shader_filter(dst, src, d, fi))
     {
         d->msg = "libplacebo_Shader: " + d->vf->log_buffer.str();
 

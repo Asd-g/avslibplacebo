@@ -68,6 +68,22 @@ std::unique_ptr<struct priv> avs_libplacebo_init(const VkPhysicalDevice& device,
 
 void avs_libplacebo_uninit(const std::unique_ptr<struct priv>& p)
 {
+    // Clean up resources specific to Resample
+    pl_tex_destroy(p->gpu, &p->sample_fbo);
+    pl_tex_destroy(p->gpu, &p->sep_fbo);
+    pl_shader_obj_destroy(&p->lut);
+
+    // Clean up resources specific to Deband
+    pl_shader_obj_destroy(&p->dither_state);
+
+    // Clean up shared texture arrays (Used by Shader, Deband, Resample)
+    for (int i = 0; i < 3; i++)
+    {
+        pl_tex_destroy(p->gpu, &p->tex_in[i]);
+        pl_tex_destroy(p->gpu, &p->tex_out[i]);
+    }
+
+    // Core cleanup
     pl_renderer_destroy(&p->rr);
     pl_dispatch_destroy(&p->dp);
     pl_vulkan_destroy(&p->vk);

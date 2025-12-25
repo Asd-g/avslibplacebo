@@ -2,10 +2,9 @@
 
 #include "avs_libplacebo.h"
 
-static std::mutex mtx;
-
 struct deband
 {
+    std::mutex mtx;
     std::unique_ptr<priv> vf;
     int process[3];
     int dither;
@@ -47,14 +46,6 @@ static bool deband_do_plane(deband* d, const int planeIdx) noexcept
 template<typename T>
 static int deband_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, deband* d, const AVS_FilterInfo* fi) noexcept
 {
-    const int error{[&]() {
-        pl_shader_obj_destroy(&d->vf->dither_state);
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
-
-        return -1;
-    }()};
-
     const pl_fmt fmt{[&]() {
         if constexpr (std::is_same_v<T, uint8_t>)
             return pl_find_named_fmt(d->vf->gpu, "r8");
@@ -64,12 +55,14 @@ static int deband_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, deband* d, co
             return pl_find_named_fmt(d->vf->gpu, "r32f");
     }()};
     if (!fmt)
-        return error;
+        return -1;
 
     constexpr int planes_y[3]{AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V};
     constexpr int planes_r[3]{AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B};
     const int* planes{(avs_is_rgb(&fi->vi)) ? planes_r : planes_y};
     const int num_planes{std::min(g_avs_api->avs_num_components(&fi->vi), 3)};
+
+    std::lock_guard<std::mutex> lck(d->mtx);
 
     for (int i{0}; i < num_planes; ++i)
     {
@@ -103,11 +96,9 @@ static int deband_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, deband* d, co
             pl.row_stride = g_avs_api->avs_get_pitch_p(src, plane);
             pl.pixels = g_avs_api->avs_get_read_ptr_p(src, plane);
 
-            std::lock_guard<std::mutex> lck(mtx);
-
             // Upload planes
             if (!pl_upload_plane(d->vf->gpu, nullptr, &d->vf->tex_in[0], &pl))
-                return error;
+                return -1;
 
             pl_tex_params t_r{};
             t_r.format = fmt;
@@ -119,42 +110,20 @@ static int deband_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, deband* d, co
             t_r.host_readable = true;
 
             if (!pl_tex_recreate(d->vf->gpu, &d->vf->tex_out[0], &t_r))
-                return error;
+                return -1;
 
             // Process plane
             if (!deband_do_plane(d, plane))
-                return error;
-
-            const size_t dst_stride{(g_avs_api->avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) &
-                                    ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1)};
-            pl_buf_params buf_params{};
-            buf_params.size = dst_stride * t_r.h;
-            buf_params.host_mapped = true;
-
-            pl_buf dst_buf{};
-            if (!pl_buf_recreate(d->vf->gpu, &dst_buf, &buf_params))
-                return error;
+                return -1;
 
             pl_tex_transfer_params ttr{};
             ttr.tex = d->vf->tex_out[0];
-            ttr.row_pitch = dst_stride;
-            ttr.buf = dst_buf;
+            ttr.row_pitch = g_avs_api->avs_get_pitch_p(dst, plane);
+            ttr.ptr = g_avs_api->avs_get_write_ptr_p(dst, plane);
 
             // Download planes
             if (!pl_tex_download(d->vf->gpu, &ttr))
-            {
-                pl_buf_destroy(d->vf->gpu, &dst_buf);
-                return error;
-            }
-
-            pl_shader_obj_destroy(&d->vf->dither_state);
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
-            pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
-
-            while (pl_buf_poll(d->vf->gpu, dst_buf, 0))
-                ;
-            memcpy(g_avs_api->avs_get_write_ptr_p(dst, plane), dst_buf->data, dst_buf->params.size);
-            pl_buf_destroy(d->vf->gpu, &dst_buf);
+                return -1;
         }
     }
 

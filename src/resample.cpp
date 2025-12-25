@@ -2,10 +2,9 @@
 
 #include "avs_libplacebo.h"
 
-static std::mutex mtx;
-
 struct resample
 {
+    std::mutex mtx;
     std::unique_ptr<priv> vf;
     float src_x;
     float src_y;
@@ -26,14 +25,12 @@ struct resample
 };
 
 static int resample_do_plane(
-    const resample* d, pl_shader_obj* lut, const int w, const int h, const float sx, const float sy, const int planeIdx) noexcept
+    const resample* d, const int w, const int h, const float sx, const float sy, const int planeIdx) noexcept
 {
     pl_shader sh{pl_dispatch_begin(d->vf->dp)};
-    pl_tex sample_fbo{};
-    pl_tex sep_fbo{};
 
     pl_sample_filter_params* sample_params{d->sample_params.get()};
-    sample_params->lut = lut;
+    sample_params->lut = &d->vf->lut;
 
     pl_color_space cs{};
     cs.transfer = d->trc;
@@ -53,7 +50,7 @@ static int resample_do_plane(
     tp.sampleable = true;
     tp.format = src.tex->params.format;
 
-    if (!pl_tex_recreate(d->vf->gpu, &sample_fbo, &tp))
+    if (!pl_tex_recreate(d->vf->gpu, &d->vf->sample_fbo, &tp))
         return -1;
 
     pl_shader_sample_direct(ish, &src);
@@ -65,7 +62,7 @@ static int resample_do_plane(
         pl_shader_sigmoidize(ish, d->sigmoid_params.get());
 
     pl_dispatch_params dp{};
-    dp.target = sample_fbo;
+    dp.target = d->vf->sample_fbo;
     dp.shader = &ish;
 
     if (!pl_dispatch_finish(d->vf->dp, &dp))
@@ -96,7 +93,7 @@ static int resample_do_plane(
         src_h + sy,
     };
 
-    src.tex = sample_fbo;
+    src.tex = d->vf->sample_fbo;
     src.rect = rect;
     src.new_h = h;
     src.new_w = w;
@@ -126,16 +123,16 @@ static int resample_do_plane(
         tp.w = src.new_w;
         tp.h = src.new_h;
 
-        if (!pl_tex_recreate(d->vf->gpu, &sep_fbo, &tp))
+        if (!pl_tex_recreate(d->vf->gpu, &d->vf->sep_fbo, &tp))
             return -1;
 
-        dp.target = sep_fbo;
+        dp.target = d->vf->sep_fbo;
         dp.shader = &tsh;
 
         if (!pl_dispatch_finish(d->vf->dp, &dp))
             return -1;
 
-        src1.tex = sep_fbo;
+        src1.tex = d->vf->sep_fbo;
         src1.scale = 1.0f;
 
         if (!pl_shader_sample_ortho2(sh, &src1, sample_params))
@@ -154,23 +151,12 @@ static int resample_do_plane(
     if (!pl_dispatch_finish(d->vf->dp, &dp))
         return -1;
 
-    pl_tex_destroy(d->vf->gpu, &sep_fbo);
-    pl_tex_destroy(d->vf->gpu, &sample_fbo);
-
     return 0;
 }
 
 template<typename T>
 static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d, const AVS_FilterInfo* fi) noexcept
 {
-    const auto error{[&](pl_shader_obj lut) {
-        pl_shader_obj_destroy(&lut);
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
-
-        return -1;
-    }};
-
     const pl_fmt fmt{[&]() {
         if constexpr (std::is_same_v<T, uint8_t>)
             return pl_find_named_fmt(d->vf->gpu, "r8");
@@ -180,12 +166,14 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
             return pl_find_named_fmt(d->vf->gpu, "r32f");
     }()};
     if (!fmt)
-        return error(nullptr);
+        return -1;
 
     constexpr int planes_y[4]{AVS_PLANAR_Y, AVS_PLANAR_U, AVS_PLANAR_V, AVS_PLANAR_A};
     constexpr int planes_r[4]{AVS_PLANAR_R, AVS_PLANAR_G, AVS_PLANAR_B, AVS_PLANAR_A};
     const int* planes{(avs_is_rgb(&fi->vi)) ? planes_r : planes_y};
     const int num_planes{g_avs_api->avs_num_components(&fi->vi)};
+
+    std::lock_guard<std::mutex> lck(d->mtx);
 
     for (int i{0}; i < num_planes; ++i)
     {
@@ -216,13 +204,9 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
         pl.row_stride = g_avs_api->avs_get_pitch_p(src, plane);
         pl.pixels = g_avs_api->avs_get_read_ptr_p(src, plane);
 
-        std::lock_guard<std::mutex> lck(mtx);
-
-        pl_shader_obj lut{};
-
         // Upload planes
         if (!pl_upload_plane(d->vf->gpu, nullptr, &d->vf->tex_in[0], &pl))
-            return error(lut);
+            return -1;
 
         pl_tex_params t_r{};
         t_r.format = fmt;
@@ -235,43 +219,21 @@ static int resample_filter(AVS_VideoFrame* dst, AVS_VideoFrame* src, resample* d
         t_r.storable = true;
 
         if (!pl_tex_recreate(d->vf->gpu, &d->vf->tex_out[0], &t_r))
-            return error(lut);
+            return -1;
 
         // Process plane
-        if (resample_do_plane(d, &lut, dst_width, dst_height, (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
+        if (resample_do_plane(d, dst_width, dst_height, (i > 0) ? (d->shift_w + d->src_x / d->subw) : d->src_x,
                 (i > 0) ? (d->shift_h + d->src_y / d->subh) : d->src_y, plane))
-            return error(lut);
-
-        const size_t dst_stride{(g_avs_api->avs_get_pitch_p(dst, plane) + (d->vf->gpu->limits.align_tex_xfer_pitch) - 1) &
-                                ~((d->vf->gpu->limits.align_tex_xfer_pitch) - 1)};
-        pl_buf_params buf_params{};
-        buf_params.size = dst_stride * t_r.h;
-        buf_params.host_mapped = true;
-
-        pl_buf dst_buf{};
-        if (!pl_buf_recreate(d->vf->gpu, &dst_buf, &buf_params))
-            return error(lut);
+            return -1;
 
         pl_tex_transfer_params ttr{};
         ttr.tex = d->vf->tex_out[0];
-        ttr.row_pitch = dst_stride;
-        ttr.buf = dst_buf;
+        ttr.row_pitch = g_avs_api->avs_get_pitch_p(dst, plane);
+        ttr.ptr = g_avs_api->avs_get_write_ptr_p(dst, plane);
 
         // Download planes
         if (!pl_tex_download(d->vf->gpu, &ttr))
-        {
-            pl_buf_destroy(d->vf->gpu, &dst_buf);
-            return error(lut);
-        }
-
-        pl_shader_obj_destroy(&lut);
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_out[0]);
-        pl_tex_destroy(d->vf->gpu, &d->vf->tex_in[0]);
-
-        while (pl_buf_poll(d->vf->gpu, dst_buf, 0))
-            ;
-        memcpy(g_avs_api->avs_get_write_ptr_p(dst, plane), dst_buf->data, dst_buf->params.size);
-        pl_buf_destroy(d->vf->gpu, &dst_buf);
+            return -1;
     }
 
     return 0;
