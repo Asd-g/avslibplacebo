@@ -1,3 +1,12 @@
+##### 1.6.0:
+    Tonemap: added parameter `black_cutoff`.
+    Dynamic link to AviSynth.
+    Fixed memory leak when `list_device=true`.
+    `device_info`: initialize correct Vulkan instance.
+    Stop destroying resources per-frame.
+    Removed busy-wait spinlock.
+    Fixed global mutex bottleneck.
+
 ##### 1.5.2:
     Tonemap: allowed SDR->HDR conversion.
     Tonemap: fixed opening lut file in some cases (ACP).

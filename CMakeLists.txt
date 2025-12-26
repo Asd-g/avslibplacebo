@@ -5,7 +5,7 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type" FORCE)
 endif()
 
-project(avs_libplacebo VERSION 1.5.2 LANGUAGES CXX)
+project(avs_libplacebo VERSION 1.6.0 LANGUAGES CXX)
 
 option(USE_SYSTEM_AVS_HELPER "Use an installed version of avs_c_api_loader" OFF)
 option(USE_STATIC_LIBPLACEBO "Link libplacebo statically" ON)
