@@ -873,6 +873,7 @@ Steps:
         # - USE_SYSTEM_AVS_HELPER: Use an installed version of avs_c_api_loader, default OFF
         # - USE_STATIC_LIBPLACEBO: Link libplacebo statically, default ON
         # - USE_STATIC_DOVI: Link dovi statically, default ON
+        # USE_STATIC_SHADERC does work only for MSVC. MINGW is always statically linked.
         # - USE_STATIC_SHADERC: Link shaderc statically (shaderc_combined) instead of shared, default ON
         cd ../
         cmake -B build -G Ninja -DCMAKE_PREFIX_PATH=%prefix% (Windows)
