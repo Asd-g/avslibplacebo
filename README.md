@@ -1,3 +1,9 @@
+# ⚠️ ARCHIVED: This plugin has been succeeded by [libplacebo_Render](https://github.com/Asd-g/libplacebo_Render)
+
+This repository is no longer maintained.
+
+---
+
 ## Description
 
 An AviSynth+ plugin interface to [libplacebo](https://code.videolan.org/videolan/libplacebo) - a reusable library for GPU-accelerated image/video processing primitives and shaders.
